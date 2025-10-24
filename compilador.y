@@ -29,11 +29,17 @@ void yyerror(const char *s);
 %%
 
 //program meuPrograma (Input, Output);
-PROGRAMA: PROGRAM ID ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
-        DECLARACOES 
+PROGRAMA: PROGRAM ID {printf("Program id OK\n");}
+        ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
+        { printf("(input, output) OK\n"); }
+        DECLARACOES
+        { printf("Declaracoes OK\n"); }
         DECLARACOES_DE_SUBPROGRAMAS 
+        { printf("Declaracoes de subprogramas OK\n");
+          printf("Iniciando funcao MAIN\n"); }
         ENUNCIADO_COMPOSTO //funcao main
         PONTO_FINAL
+        { printf("Programa OK"); }
         ;
 
 // Input, Output
@@ -43,7 +49,11 @@ LISTA_DE_IDENTIFICADORES: ID
 
 // .....
 // var a,b,c: integer;
-DECLARACOES: DECLARACOES VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO PONTO_VIRGULA 
+DECLARACOES: DECLARACOES VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS
+            { printf("Declaracao de variveis OK\n"); }
+            TIPO 
+            { printf("Declaracao tipo vars OK\n"); }
+            PONTO_VIRGULA 
            | /* empty */ 
            ;
 
@@ -79,7 +89,10 @@ LISTA_DE_PARAMETROS: LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
 
 // um enunciado composto pode conter enunciados compostos
 // sempre wrapped por BEGIN e END
-ENUNCIADO_COMPOSTO: BEGIN_TOKEN ENUNCIADOS_OPCIONAIS END
+ENUNCIADO_COMPOSTO: BEGIN_TOKEN 
+                    { printf("=== Dentro de enun composto\n"); }
+                    ENUNCIADOS_OPCIONAIS END
+                    { printf("=== Fora de enun composto\n"); }
                   ;
 
 // posso ter BEGIN END; (vazio)
@@ -87,18 +100,23 @@ ENUNCIADOS_OPCIONAIS: LISTA_DE_ENUNCIADOS
                     | /* empty */
                     ;
 
-LISTA_DE_ENUNCIADOS: ENUNCIADO
-                   | LISTA_DE_ENUNCIADOS PONTO_VIRGULA ENUNCIADO
+LISTA_DE_ENUNCIADOS: ENUNCIADO 
+                   | LISTA_DE_ENUNCIADOS PONTO_VIRGULA ENUNCIADO 
                    ;
 
 /* id = exp
 IF EXP
 WHILE */
+// TODO: PONTOS E VIRGULAS ESTAO CERTOS AQUI?
 ENUNCIADO: VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO 
+        { printf("Atribuicao\n"); }
          | CHAMADA_DE_PROCEDIMENTO
+        { printf("Chamada de func\n"); }
          | ENUNCIADO_COMPOSTO
-         | IF EXPRESSAO 
-         | WHILE 
+         | IF EXPRESSAO THEN ENUNCIADO ELSE ENUNCIADO 
+        { printf("IF\n"); }
+         | WHILE EXPRESSAO DO ENUNCIADO
+        { printf("WHILE\n"); }
          ;
 
 VARIAVEL: ID 
@@ -115,19 +133,26 @@ LISTA_DE_EXPRESSOES: EXPRESSAO
 // Operadores relacionais: =, <>, >, >=, <, <=
 EXPRESSAO: EXPRESSAO_SIMPLES
          | EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES   
+            {printf("Operacao relacional\n");}
          ;
 
 // expressao simples eh uma conta com valor numerico
 EXPRESSAO_SIMPLES: TERMO
                  | SINAL TERMO   
+                {printf("Operacao sinal\n");}
                  | EXPRESSAO_SIMPLES MAIS EXPRESSAO_SIMPLES 
+                {printf("Operacao mais\n");}
                  | EXPRESSAO_SIMPLES MENOS EXPRESSAO_SIMPLES 
+                {printf("Operacao menos\n");}
                  | EXPRESSAO_SIMPLES OR EXPRESSAO_SIMPLES  
+                {printf("Operacao or\n");}
+
                  ;
 
 // resultado de uma operacao multiplicativa (*, /, div, mod, and)
 TERMO: FATOR
      | TERMO OPERADOR_MULTIPLICATIVO FATOR  
+    {printf("Operacao multiplicativa\n");}
      ;
 
 FATOR: ID 
