@@ -28,17 +28,21 @@ void yyerror(const char *s);
 
 %%
 
+//program meuPrograma (Input, Output);
 PROGRAMA: PROGRAM ID ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
         DECLARACOES 
         DECLARACOES_DE_SUBPROGRAMAS 
-        ENUNCIADO_COMPOSTO 
+        ENUNCIADO_COMPOSTO //funcao main
         PONTO_FINAL
         ;
 
+// Input, Output
 LISTA_DE_IDENTIFICADORES: ID 
                         | LISTA_DE_IDENTIFICADORES VIRGULA ID 
                         ;
 
+// .....
+// var a,b,c: integer;
 DECLARACOES: DECLARACOES VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO PONTO_VIRGULA 
            | /* empty */ 
            ;
@@ -47,30 +51,38 @@ TIPO: INTEIRO
     | REAL 
     ;
 
+// Subprogramas podem ser funcoes (com ret) ou procedimentos (sem ret)
 DECLARACOES_DE_SUBPROGRAMAS: DECLARACOES_DE_SUBPROGRAMAS DECLARACAO_DE_SUBPROGRAMA PONTO_VIRGULA
                            | /* empty */
                            ;
 
-DECLARACAO_DE_SUBPROGRAMA: CABECALHO_DE_SUBPROGRAMA DECLARACOES 
+DECLARACAO_DE_SUBPROGRAMA: CABECALHO_DE_SUBPROGRAMA DECLARACOES ENUNCIADO_COMPOSTO
                          ;
 
+// Procedure nao tem tipo
 CABECALHO_DE_SUBPROGRAMA: FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA 
                         | PROCEDURE ID ARGUMENTOS PONTO_VIRGULA 
                         ;
 
+// (a,b: integer)
 ARGUMENTOS: ABRE_PARENTESES LISTA_DE_PARAMETROS FECHA_PARENTESES 
           | /* empty */ 
           ;
 
+// (a: integer): por valor
+// (var a: integer): por ref
 LISTA_DE_PARAMETROS: LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO 
                    | VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
                    | LISTA_DE_PARAMETROS PONTO_VIRGULA LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
                    | LISTA_DE_PARAMETROS PONTO_VIRGULA VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
                    ;
 
+// um enunciado composto pode conter enunciados compostos
+// sempre wrapped por BEGIN e END
 ENUNCIADO_COMPOSTO: BEGIN_TOKEN ENUNCIADOS_OPCIONAIS END
                   ;
 
+// posso ter BEGIN END; (vazio)
 ENUNCIADOS_OPCIONAIS: LISTA_DE_ENUNCIADOS
                     | /* empty */
                     ;
@@ -79,6 +91,9 @@ LISTA_DE_ENUNCIADOS: ENUNCIADO
                    | LISTA_DE_ENUNCIADOS PONTO_VIRGULA ENUNCIADO
                    ;
 
+/* id = exp
+IF EXP
+WHILE */
 ENUNCIADO: VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO 
          | CHAMADA_DE_PROCEDIMENTO
          | ENUNCIADO_COMPOSTO
@@ -97,10 +112,12 @@ LISTA_DE_EXPRESSOES: EXPRESSAO
                    | LISTA_DE_EXPRESSOES VIRGULA EXPRESSAO  
                    ;
 
+// Operadores relacionais: =, <>, >, >=, <, <=
 EXPRESSAO: EXPRESSAO_SIMPLES
          | EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES   
          ;
 
+// expressao simples eh uma conta com valor numerico
 EXPRESSAO_SIMPLES: TERMO
                  | SINAL TERMO   
                  | EXPRESSAO_SIMPLES MAIS EXPRESSAO_SIMPLES 
@@ -108,6 +125,7 @@ EXPRESSAO_SIMPLES: TERMO
                  | EXPRESSAO_SIMPLES OR EXPRESSAO_SIMPLES  
                  ;
 
+// resultado de uma operacao multiplicativa (*, /, div, mod, and)
 TERMO: FATOR
      | TERMO OPERADOR_MULTIPLICATIVO FATOR  
      ;
