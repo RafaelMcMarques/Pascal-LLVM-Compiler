@@ -1,6 +1,10 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#include "AST_node_types.h"
+#include "frontend.h"
 
 int yylex();
 extern FILE *yyin;
@@ -8,6 +12,23 @@ extern int yylineno;
 void yyerror(const char *s);
 
 %}
+
+%code requires {
+  #include "AST_node_types.h"
+  #include "frontend.h"
+
+  typedef struct astNode_t astNode_t;
+  typedef enum lexemeType_e lexemeType_e;
+}
+
+%union {
+  // for non-terminals
+  astNode_t *node;
+
+  // for terminals
+  char *lexeme;
+  varType_e varType;
+}
 
 // Faz com que os erros sintaticos sejam bem detalhados
 %define parse.error detailed
@@ -18,9 +39,12 @@ void yyerror(const char *s);
 %token INTEIRO REAL
 %token FUNCTION PROCEDURE BEGIN_TOKEN END 
 %token IF THEN ELSE WHILE DO 
-%token NUM ID OPERADOR_ATRIBUICAO OPERADOR_RELACIONAL MAIS MENOS OR OPERADOR_MULTIPLICATIVO
+%token<lexeme> NUM ID OPERADOR_ATRIBUICAO OPERADOR_RELACIONAL MAIS MENOS OR OPERADOR_MULTIPLICATIVO
 %token ABRE_PARENTESES FECHA_PARENTESES
 %token PONTO_FINAL PONTO_VIRGULA VIRGULA DOIS_PONTOS
+
+%type <node> LISTA_DE_IDENTIFICADORES PROGRAMA DECLARACOES 
+%type <varType> TIPO
 
 
 // Define a associatividade dessas operacoes. A precedencia ja esta incluida na gramatica
@@ -29,36 +53,58 @@ void yyerror(const char *s);
 %%
 
 //program meuPrograma (Input, Output);
-PROGRAMA: PROGRAM ID {printf("Program id OK\n");}
-        ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
-        { printf("(input, output) OK\n"); }
-        DECLARACOES
-        { printf("Declaracoes OK\n"); }
-        DECLARACOES_DE_SUBPROGRAMAS 
-        { printf("Declaracoes de subprogramas OK\n");
-          printf("Iniciando funcao MAIN\n"); }
-        ENUNCIADO_COMPOSTO //funcao main
-        PONTO_FINAL
-        { printf("Programa OK"); }
-        ;
+PROGRAMA: 
+PROGRAM ID {
+  printf("Program id OK\n"); 
+}
+ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
+{ printf("(input, output) OK\n"); }
+DECLARACOES
+{ printf("Declaracoes OK\n"); }
+DECLARACOES_DE_SUBPROGRAMAS 
+{ printf("Declaracoes de subprogramas OK\n");
+  printf("Iniciando funcao MAIN\n"); }
+ENUNCIADO_COMPOSTO //funcao main
+PONTO_FINAL {
+  printf("Programa OK\n"); 
+  //TODO: edit this to create root node all at once  
+  $$ = createProgramNode($2, $9);
+}
+;
 
 // Input, Output
-LISTA_DE_IDENTIFICADORES: ID 
-                        | LISTA_DE_IDENTIFICADORES VIRGULA ID 
-                        ;
+LISTA_DE_IDENTIFICADORES: 
+ID {
+  astNode_t *idsListNode = createListNode();
+  astNode_t *idNode = createIdNode($1);  
+  addChildToListNode(idsListNode, idNode);
+  $$ = idsListNode;
+}
+| LISTA_DE_IDENTIFICADORES VIRGULA ID {
+  astNode_t *idNode = createIdNode($3);
+  addChildToListNode($1, idNode);
+  $$ = $1;
+} 
+;
 
 // .....
 // var a,b,c: integer;
-DECLARACOES: DECLARACOES VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS
-            { printf("Declaracao de variveis OK\n"); }
-            TIPO 
-            { printf("Declaracao tipo vars OK\n"); }
-            PONTO_VIRGULA 
-           | /* empty */ 
-           ;
+DECLARACOES: 
+DECLARACOES VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS
+TIPO 
+PONTO_VIRGULA {
+  astNode_t *varsDefinition = createVarsDefinitionNode($5, $3);
+  addChildToListNode($1, varsDefinition);
+  $$ = $1;
+} 
+/*==*/
+| /* empty */ {
+  $$ = createListNode();
+}
+;
 
-TIPO: INTEIRO 
-    | REAL 
+TIPO: INTEIRO  {$$ = INT_TYPE; } 
+    | REAL { $$ = REAL_TYPE; }
     ;
 
 // Subprogramas podem ser funcoes (com ret) ou procedimentos (sem ret)
@@ -105,9 +151,9 @@ LISTA_DE_ENUNCIADOS: ENUNCIADO
                    ;
 
 /* id = exp
+func(a)
 IF EXP
 WHILE */
-// TODO: PONTOS E VIRGULAS ESTAO CERTOS AQUI?
 ENUNCIADO: VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO 
         { printf("Atribuicao\n"); }
          | CHAMADA_DE_PROCEDIMENTO
@@ -122,7 +168,7 @@ ENUNCIADO: VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO
 VARIAVEL: ID 
         ;
 
-CHAMADA_DE_PROCEDIMENTO: ID 
+CHAMADA_DE_PROCEDIMENTO: ID // posso chamar funcoes sem params assim 
                     | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES 
                     ;
 
@@ -155,11 +201,12 @@ TERMO: FATOR
     {printf("Operacao multiplicativa\n");}
      ;
 
-FATOR: ID 
-     | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES  
-     | NUM 
-     | ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES 
-     ;
+FATOR: 
+    ID
+    | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES  
+    | NUM 
+    | ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES 
+    ;
 
 SINAL: MAIS
      | MENOS

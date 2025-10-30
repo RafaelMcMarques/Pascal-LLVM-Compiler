@@ -2,7 +2,8 @@
 
 %{
 #include "compilador.tab.h" // para utilizar os TOKENS criados pelo BISON
-
+#include "AST_node_types.h"
+#include "frontend.h"
 %}
 
 id [a-zA-Z][a-zA-Z1-9]*
@@ -36,8 +37,13 @@ numero      {digitos}(\.{digitos})?([Ee][+-]?{digitos})?
 "-" { return MENOS; }
 "or" { return OR; }
 ("*"|"/"|"div"|"mod"|"and") { return OPERADOR_MULTIPLICATIVO; }
-{id} { return ID; }
-{numero} { return NUM; }
+{id} { 
+  yylval.lexeme = strdup(yytext); 
+  return ID; 
+}
+{numero} {
+    return NUM; 
+}
  
 
 [ \t] {/*ignorar espacos em branco, incluindo tabs*/}

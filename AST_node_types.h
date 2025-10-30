@@ -12,47 +12,67 @@
 typedef struct astNode_t astNode_t;
 
 typedef enum astNodeType_e {
-  PROGRAM_NODE, // root
   LIST_NODE,
-  VAR_DELCARATION_NODE,
+  PROGRAM_NODE, // root
+  VARS_DEFINITION_NODE,
+  ID_NODE
 } astNodeType_e;
 
 typedef enum listNodeType_e {
   CODE_BLOCK, 
-  VAR_DECLARATIONS,
-  SUBPROGRAM_DECLARATIONS,
+  IDS_LIST, // vai servir para globais, locais e params
+  SUBPROGRAM_LIST,
+  VARS_DEFINITIONS_LIST,
 } listNodeType_e;
+
 
 typedef enum varType_e {
   INT_TYPE,
   REAL_TYPE,
 } varType_e;
 
+typedef enum idType_e {
+  VARIABLE_ID,
+  FUNCTION_ID,
+} idType_e;
+
+// LIST_NODE 
 typedef struct listNode_t {
   listNodeType_e listNodeType;
-  int childCount;
+  int childrenCount;
   astNode_t* children[100];
 } listNode_t;
 
+// PROGRAM_NODE
 typedef struct programNode_t {
   char* programName;
-  listNode_t* varDeclarationList;  
-  listNode_t* subprogramDeclarationList;
-  listNode_t* mainCodeBlock;
+  astNode_t* varDeclarationList;  
+  astNode_t* subprogramDeclarationList;
+  astNode_t* mainCodeBlock;
 
 } programNode_t;
 
-typedef struct varDeclarationNode_t {
-  varType_e varType;
-  char varName[100];
-} varDeclarationNode_t;
+//VARS DEFINITION NODE
+typedef struct varsDefinitionNode_t {
+  varType_e varsType;
+  astNode_t* varsList;
+} varsDefinitionNode_t;
+
+
+// ID_NODE
+typedef struct idNode_t {
+  idType_e idType;
+  char *id;
+} idNode_t;
 
 typedef struct astNode_t {
-  astNodeType_e NodeType;
+  astNodeType_e nodeType;
 
   union {
-    programNode_t *program;
     listNode_t *list;
+    programNode_t *program;
+    idNode_t *id;
+    varsDefinitionNode_t *varsDefinition;
 
   } payload; 
 
