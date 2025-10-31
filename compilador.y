@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "AST_node_types.h"
-#include "frontend.h"
 
 int yylex();
 extern FILE *yyin;
@@ -16,6 +14,7 @@ void yyerror(const char *s);
 %code requires {
   #include "AST_node_types.h"
   #include "frontend.h"
+  #include "ast.h"
 
   typedef struct astNode_t astNode_t;
   typedef enum lexemeType_e lexemeType_e;
@@ -68,14 +67,15 @@ ENUNCIADO_COMPOSTO //funcao main
 PONTO_FINAL {
   printf("Programa OK\n"); 
   //TODO: edit this to create root node all at once  
-  $$ = createProgramNode($2, $9);
+  astNode_t *node = createProgramNode($2, $9);
+  printAST(node);
 }
 ;
 
 // Input, Output
 LISTA_DE_IDENTIFICADORES: 
 ID {
-  astNode_t *idsListNode = createListNode();
+  astNode_t *idsListNode = createListNode(IDS_LIST);
   astNode_t *idNode = createIdNode($1);  
   addChildToListNode(idsListNode, idNode);
   $$ = idsListNode;
@@ -99,7 +99,7 @@ PONTO_VIRGULA {
 } 
 /*==*/
 | /* empty */ {
-  $$ = createListNode();
+  $$ = createListNode(VARS_DEFINITIONS_LIST);
 }
 ;
 

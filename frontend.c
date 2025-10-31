@@ -52,11 +52,12 @@ astNode_t *createIdNode(char *id) {
   return node;
 }
 
-astNode_t *createListNode() {
+astNode_t *createListNode(listNodeType_e listNodeType) {
   astNode_t *node = malloc(sizeof(astNode_t));
   listNode_t *listNode = malloc(sizeof(listNode_t));
 
   listNode->childrenCount = 0;
+  listNode->listNodeType = listNodeType;
 
   node->nodeType = LIST_NODE;
   node->payload.list = listNode;
