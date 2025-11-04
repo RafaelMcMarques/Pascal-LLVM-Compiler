@@ -1,4 +1,5 @@
 #include "frontend.h"
+#include "AST_node_types.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,6 +89,21 @@ astNode_t *createVarsDefinitionNode(varType_e varsType, astNode_t *varsList) {
 
   node->nodeType = VARS_DEFINITION_NODE;
   node->payload.varsDefinition = varsDefNode;
+
+  return node;
+}
+
+astNode_t *createParamDefNode(varType_e varType, int byReference,
+                              astNode_t *idsList) {
+  astNode_t *node = malloc(sizeof(astNode_t));
+  paramDefNode_t *paramDefNode = malloc(sizeof(paramDefNode_t));
+
+  paramDefNode->byReference = byReference;
+  paramDefNode->varType = varType;
+  paramDefNode->idsList = idsList;
+
+  node->nodeType = PARAMETER_DEF_NODE;
+  node->payload.paramDefNode = paramDefNode;
 
   return node;
 }

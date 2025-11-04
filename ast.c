@@ -1,26 +1,32 @@
 #include "ast.h"
+#include "AST_node_types.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 
 int depth = 0;
-FILE *file;
+FILE *file = NULL;
 
 void printRec(astNode_t *node);
 
 void myPrint(const char *fmt, ...) {
   // printf("Called myprint\n");
   for (int i = 0; i < depth; i++) {
-    fprintf(file, " ");
-    // printf(" ");
+    if (file)
+      fprintf(file, "\t");
+    else
+      printf("\t");
   }
 
   va_list args;
   va_start(args, fmt);
-  int result = vfprintf(file, fmt, args);
-  // printf(fmt, args);
+  if (file) {
+    vfprintf(file, fmt, args);
+    fflush(file);
+  } else {
+    vprintf(fmt, args);
+  }
   va_end(args);
-  fflush(file);
 }
 
 void printListNode(astNode_t *node) {
@@ -39,6 +45,9 @@ void printListNode(astNode_t *node) {
     break;
   case VARS_DEFINITIONS_LIST:
     myPrint("VAR DEFS LIST");
+    break;
+  case PARAM_DEF_LIST:
+    myPrint("PARAM DEFS LIST");
     break;
   default:
     myPrint("Unknown list type node");
@@ -91,6 +100,19 @@ void printIdNode(astNode_t *node) {
   myPrint("id: %s\n", idNode->id);
 }
 
+void printParameterDefNode(astNode_t *node) {
+  paramDefNode_t *paramDefNode = node->payload.paramDefNode;
+
+  myPrint("PARAM DEF\n");
+
+  myPrint("varType: %d\n", paramDefNode->varType);
+  myPrint("byReference: %d\n", paramDefNode->byReference);
+
+  depth++;
+  printRec(paramDefNode->idsList);
+  depth--;
+}
+
 void printRec(astNode_t *node) {
   if (!node) {
     myPrint("NULL NODE\n");
@@ -111,21 +133,27 @@ void printRec(astNode_t *node) {
   case ID_NODE:
     printIdNode(node);
     break;
+  case PARAMETER_DEF_NODE:
+    printParameterDefNode(node);
+    break;
   default:
     myPrint("UNKNOWN NODE\n");
     break;
   }
 }
 
-void printAST(astNode_t *root) {
-  file = fopen("output.txt", "w"); // open file for writing
-  depth = 0;
-  if (file == NULL) {
-    printf("Error opening file.\n");
-    exit(1);
+void printAST(astNode_t *root, char *file_name) {
+  if (file_name) {
+    file = fopen(file_name, "a"); // open file for writing
+    depth = 0;
+    if (file == NULL) {
+      printf("Error opening file.\n");
+      exit(1);
+    }
   }
 
   depth = 0;
   printRec(root);
-  fclose(file);
+  if (file)
+    fclose(file);
 }

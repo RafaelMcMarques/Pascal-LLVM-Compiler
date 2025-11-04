@@ -19,4 +19,6 @@ astNode_t *createProgramNode(char *programName, astNode_t *varDeclarationsList);
 
 astNode_t *createVarsDefinitionNode(varType_e varsType, astNode_t *varsList);
 
+astNode_t *createParamDefNode(varType_e varType, int byReference,
+                              astNode_t *idsList);
 #endif

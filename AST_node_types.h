@@ -15,7 +15,8 @@ typedef enum astNodeType_e {
   LIST_NODE,
   PROGRAM_NODE, // root
   VARS_DEFINITION_NODE,
-  ID_NODE
+  ID_NODE,
+  PARAMETER_DEF_NODE,
 } astNodeType_e;
 
 typedef enum listNodeType_e {
@@ -23,6 +24,7 @@ typedef enum listNodeType_e {
   IDS_LIST, // vai servir para globais, locais e params
   SUBPROGRAM_LIST,
   VARS_DEFINITIONS_LIST,
+  PARAM_DEF_LIST,
 } listNodeType_e;
 
 
@@ -65,6 +67,13 @@ typedef struct idNode_t {
   char *id;
 } idNode_t;
 
+// PARAMETER_DEF_NODE,
+typedef struct paramDefNode_t {
+  varType_e varType;
+  int byReference;
+  astNode_t *idsList;
+} paramDefNode_t;
+
 typedef struct astNode_t {
   astNodeType_e nodeType;
 
@@ -73,6 +82,7 @@ typedef struct astNode_t {
     programNode_t *program;
     idNode_t *id;
     varsDefinitionNode_t *varsDefinition;
+    paramDefNode_t *paramDefNode;
 
   } payload; 
 

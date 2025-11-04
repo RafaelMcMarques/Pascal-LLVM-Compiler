@@ -43,6 +43,7 @@ void yyerror(const char *s);
 %token PONTO_FINAL PONTO_VIRGULA VIRGULA DOIS_PONTOS
 
 %type <node> LISTA_DE_IDENTIFICADORES PROGRAMA DECLARACOES 
+%type <node> LISTA_DE_PARAMETROS ARGUMENTOS
 %type <varType> TIPO
 
 
@@ -68,7 +69,7 @@ PONTO_FINAL {
   printf("Programa OK\n"); 
   //TODO: edit this to create root node all at once  
   astNode_t *node = createProgramNode($2, $9);
-  printAST(node);
+  printAST(node, "output.txt");
 }
 ;
 
@@ -121,17 +122,38 @@ CABECALHO_DE_SUBPROGRAMA: FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA
                         ;
 
 // (a,b: integer)
-ARGUMENTOS: ABRE_PARENTESES LISTA_DE_PARAMETROS FECHA_PARENTESES 
-          | /* empty */ 
+ARGUMENTOS: ABRE_PARENTESES LISTA_DE_PARAMETROS FECHA_PARENTESES {
+  printAST($2, NULL);
+}
+          | {$$ = NULL; } /* empty */ 
           ;
 
 // (a: integer): por valor
 // (var a: integer): por ref
-LISTA_DE_PARAMETROS: LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO 
-                   | VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
-                   | LISTA_DE_PARAMETROS PONTO_VIRGULA LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
-                   | LISTA_DE_PARAMETROS PONTO_VIRGULA VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO
-                   ;
+LISTA_DE_PARAMETROS: 
+LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO  {
+  astNode_t* paramDefsList = createListNode(PARAM_DEF_LIST);
+  astNode_t* paramDefNode = createParamDefNode($3, 0, $1);
+  addChildToListNode(paramDefsList, paramDefNode);
+  $$ = paramDefsList;
+}
+| VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO {
+  astNode_t* paramDefsList = createListNode(PARAM_DEF_LIST);
+  astNode_t* paramDefNode = createParamDefNode($4, 1, $2);
+  addChildToListNode(paramDefsList, paramDefNode);
+  $$ = paramDefsList;
+}
+| LISTA_DE_PARAMETROS PONTO_VIRGULA LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO {
+  astNode_t *paramDefNode = createParamDefNode($5, 0, $3);
+  addChildToListNode($1, paramDefNode);
+  $$ = $1;
+}
+| LISTA_DE_PARAMETROS PONTO_VIRGULA VAR LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO {
+  astNode_t *paramDefNode = createParamDefNode($6, 1, $4);
+  addChildToListNode($1, paramDefNode);
+  $$ = $1;
+}
+;
 
 // um enunciado composto pode conter enunciados compostos
 // sempre wrapped por BEGIN e END
