@@ -43,7 +43,8 @@ void yyerror(const char *s);
 %token PONTO_FINAL PONTO_VIRGULA VIRGULA DOIS_PONTOS
 
 %type <node> LISTA_DE_IDENTIFICADORES PROGRAMA DECLARACOES 
-%type <node> LISTA_DE_PARAMETROS ARGUMENTOS
+%type <node> LISTA_DE_PARAMETROS ARGUMENTOS CABECALHO_DE_SUBPROGRAMA
+%type <node> DECLARACAO_DE_SUBPROGRAMA DECLARACOES_DE_SUBPROGRAMAS
 %type <varType> TIPO
 
 
@@ -68,7 +69,7 @@ ENUNCIADO_COMPOSTO //funcao main
 PONTO_FINAL {
   printf("Programa OK\n"); 
   //TODO: edit this to create root node all at once  
-  astNode_t *node = createProgramNode($2, $9);
+  astNode_t *node = createProgramNode($2, $9, $11);
   printAST(node, "output.txt");
 }
 ;
@@ -109,21 +110,40 @@ TIPO: INTEIRO  {$$ = INT_TYPE; }
     ;
 
 // Subprogramas podem ser funcoes (com ret) ou procedimentos (sem ret)
-DECLARACOES_DE_SUBPROGRAMAS: DECLARACOES_DE_SUBPROGRAMAS DECLARACAO_DE_SUBPROGRAMA PONTO_VIRGULA
-                           | /* empty */
-                           ;
+DECLARACOES_DE_SUBPROGRAMAS: 
+DECLARACOES_DE_SUBPROGRAMAS DECLARACAO_DE_SUBPROGRAMA PONTO_VIRGULA {
+  addChildToListNode($1, $2);
+  $$ = $1;
+}
+| /* empty */ {
+  astNode_t *listNode = createListNode(SUBPROGRAM_LIST);
+  $$ = listNode;
+}
+;
 
-DECLARACAO_DE_SUBPROGRAMA: CABECALHO_DE_SUBPROGRAMA DECLARACOES ENUNCIADO_COMPOSTO
-                         ;
-
+DECLARACAO_DE_SUBPROGRAMA: 
+CABECALHO_DE_SUBPROGRAMA DECLARACOES ENUNCIADO_COMPOSTO {
+  astNode_t* subprogramDef = createSubprogramDefNode($1, $2, NULL);
+  $$ = subprogramDef;
+} 
+;
 // Procedure nao tem tipo
-CABECALHO_DE_SUBPROGRAMA: FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA 
-                        | PROCEDURE ID ARGUMENTOS PONTO_VIRGULA 
-                        ;
+CABECALHO_DE_SUBPROGRAMA: 
+FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA {
+  astNode_t *idNode = createIdNode2($2, FUNCTION_ID);
+  astNode_t *header = createSubprogramHeaderNode(idNode, $5, $3);
+  $$ = header;
+}
+| PROCEDURE ID ARGUMENTOS PONTO_VIRGULA  {
+  astNode_t *idNode = createIdNode($2);
+  astNode_t *header = createSubprogramHeaderNode(idNode, NO_TYPE, $3);
+  $$ = header;
+}
+;
 
 // (a,b: integer)
 ARGUMENTOS: ABRE_PARENTESES LISTA_DE_PARAMETROS FECHA_PARENTESES {
-  printAST($2, NULL);
+  $$ = $2;
 }
           | {$$ = NULL; } /* empty */ 
           ;

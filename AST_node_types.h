@@ -17,6 +17,8 @@ typedef enum astNodeType_e {
   VARS_DEFINITION_NODE,
   ID_NODE,
   PARAMETER_DEF_NODE,
+  SUBPROGRAM_HEADER_NODE,
+  SUBPROGRAM_DEF_NODE, 
 } astNodeType_e;
 
 typedef enum listNodeType_e {
@@ -31,6 +33,7 @@ typedef enum listNodeType_e {
 typedef enum varType_e {
   INT_TYPE,
   REAL_TYPE,
+  NO_TYPE,
 } varType_e;
 
 typedef enum idType_e {
@@ -74,6 +77,21 @@ typedef struct paramDefNode_t {
   astNode_t *idsList;
 } paramDefNode_t;
 
+//  SUBPROGRAM_HEADER_NODE 
+typedef struct subprogramHeaderNode_t {
+  astNode_t *id;
+  varType_e returnType;
+  astNode_t *params;
+} subprogramHeaderNode_t;
+
+//id, return_type, hasParams, params, localVarDecl, codeBlock
+//  SUBPROGRAM_DEF_NODE 
+typedef struct subprogramDefNode_t {
+  astNode_t *header;
+  astNode_t *declarations;
+  astNode_t *codeBlock;
+} subprogramDefNode_t;
+
 typedef struct astNode_t {
   astNodeType_e nodeType;
 
@@ -83,6 +101,8 @@ typedef struct astNode_t {
     idNode_t *id;
     varsDefinitionNode_t *varsDefinition;
     paramDefNode_t *paramDefNode;
+    subprogramHeaderNode_t *subprogramHeader;
+    subprogramDefNode_t *subprogramDefNode;
 
   } payload; 
 

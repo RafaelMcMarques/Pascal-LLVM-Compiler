@@ -24,13 +24,14 @@ void printASTRoot(astNode_t *root) {
   printf("\n");
 }
 
-astNode_t *createProgramNode(char *programName,
-                             astNode_t *varDeclarationsList) {
+astNode_t *createProgramNode(char *programName, astNode_t *varDeclarationsList,
+                             astNode_t *subprograms) {
   astNode_t *node = malloc(sizeof(astNode_t));
   programNode_t *programNode = malloc(sizeof(programNode_t));
 
   programNode->programName = programName;
   programNode->varDeclarationList = varDeclarationsList;
+  programNode->subprogramDeclarationList = subprograms;
 
   node->nodeType = PROGRAM_NODE;
   node->payload.program = programNode;
@@ -53,6 +54,19 @@ astNode_t *createIdNode(char *id) {
   return node;
 }
 
+astNode_t *createIdNode2(char *id, idType_e type) {
+  astNode_t *node = malloc(sizeof(astNode_t));
+  idNode_t *idNode = malloc(sizeof(idNode_t));
+
+  idNode->id = id;
+  idNode->idType = type;
+
+  node->nodeType = ID_NODE;
+  node->payload.id = idNode;
+
+  return node;
+}
+
 astNode_t *createListNode(listNodeType_e listNodeType) {
   astNode_t *node = malloc(sizeof(astNode_t));
   listNode_t *listNode = malloc(sizeof(listNode_t));
@@ -67,7 +81,6 @@ astNode_t *createListNode(listNodeType_e listNodeType) {
 }
 
 void addChildToListNode(astNode_t *listNode, astNode_t *child) {
-  printf("Adding child to list\n");
   if (listNode->nodeType != LIST_NODE) {
     printf("Wrong node type passed to addChildToListNode\n");
     exit(1);
@@ -104,6 +117,38 @@ astNode_t *createParamDefNode(varType_e varType, int byReference,
 
   node->nodeType = PARAMETER_DEF_NODE;
   node->payload.paramDefNode = paramDefNode;
+
+  return node;
+}
+
+astNode_t *createSubprogramHeaderNode(astNode_t *id, varType_e returnType,
+                                      astNode_t *params) {
+
+  astNode_t *node = malloc(sizeof(astNode_t));
+  subprogramHeaderNode_t *subprogramHeaderNode =
+      malloc(sizeof(subprogramHeaderNode_t));
+
+  subprogramHeaderNode->id = id;
+  subprogramHeaderNode->returnType = returnType;
+  subprogramHeaderNode->params = params;
+
+  node->nodeType = SUBPROGRAM_HEADER_NODE;
+  node->payload.subprogramHeader = subprogramHeaderNode;
+
+  return node;
+}
+
+astNode_t *createSubprogramDefNode(astNode_t *header, astNode_t *declarations,
+                                   astNode_t *codeBlock) {
+  astNode_t *node = malloc(sizeof(astNode_t));
+  subprogramDefNode_t *subprogramDefNode = malloc(sizeof(subprogramDefNode_t));
+
+  subprogramDefNode->declarations = declarations;
+  subprogramDefNode->codeBlock = codeBlock;
+  subprogramDefNode->header = header;
+
+  node->nodeType = SUBPROGRAM_DEF_NODE;
+  node->payload.subprogramDefNode = subprogramDefNode;
 
   return node;
 }

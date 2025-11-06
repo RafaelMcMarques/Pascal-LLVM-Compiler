@@ -13,7 +13,7 @@ void myPrint(const char *fmt, ...) {
   // printf("Called myprint\n");
   for (int i = 0; i < depth; i++) {
     if (file)
-      fprintf(file, "\t");
+      fprintf(file, "\t\t");
     else
       printf("\t");
   }
@@ -113,6 +113,34 @@ void printParameterDefNode(astNode_t *node) {
   depth--;
 }
 
+void printSubprogramHeaderNode(astNode_t *node) {
+  subprogramHeaderNode_t *headerNode = node->payload.subprogramHeader;
+
+  myPrint("SUBPROGRAM HEADER\n");
+
+  myPrint("return type: %d\n", headerNode->returnType);
+
+  depth++;
+  printRec(headerNode->id);
+  depth--;
+
+  depth++;
+  printRec(headerNode->params);
+  depth--;
+}
+
+void printSubprogramDefNode(astNode_t *node) {
+  subprogramDefNode_t *subpNode = node->payload.subprogramDefNode;
+
+  myPrint("SUBPROGRAM DECLARATION\n");
+
+  depth++;
+  printRec(subpNode->header);
+  printRec(subpNode->declarations);
+  printRec(subpNode->codeBlock);
+  depth--;
+}
+
 void printRec(astNode_t *node) {
   if (!node) {
     myPrint("NULL NODE\n");
@@ -135,6 +163,12 @@ void printRec(astNode_t *node) {
     break;
   case PARAMETER_DEF_NODE:
     printParameterDefNode(node);
+    break;
+  case SUBPROGRAM_HEADER_NODE:
+    printSubprogramHeaderNode(node);
+    break;
+  case SUBPROGRAM_DEF_NODE:
+    printSubprogramDefNode(node);
     break;
   default:
     myPrint("UNKNOWN NODE\n");
