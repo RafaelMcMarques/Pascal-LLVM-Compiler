@@ -19,14 +19,20 @@ typedef enum astNodeType_e {
   PARAMETER_DEF_NODE,
   SUBPROGRAM_HEADER_NODE,
   SUBPROGRAM_DEF_NODE, 
+  ASSIGNMENT_NODE,
+  FUNCTION_CALL_NODE,
+  CODE_BLOCK_NODE,
+  IF_NODE,
+  WHILE_NODE,
 } astNodeType_e;
 
 typedef enum listNodeType_e {
-  CODE_BLOCK, 
+  STATEMENT_LIST, 
   IDS_LIST, // vai servir para globais, locais e params
   SUBPROGRAM_LIST,
   VARS_DEFINITIONS_LIST,
   PARAM_DEF_LIST,
+  EXPRESSION_LIST,
 } listNodeType_e;
 
 
@@ -92,6 +98,39 @@ typedef struct subprogramDefNode_t {
   astNode_t *codeBlock;
 } subprogramDefNode_t;
 
+// ASSIGNMENT_NODE,
+typedef struct assignmentNode_t {
+  astNode_t *variable;
+  astNode_t *exp;
+
+} assignmentNode_t;
+
+// FUNCTION_CALL_NODE,
+typedef struct functionCallNode_t {
+  astNode_t* id;
+  int hasArguments;
+  astNode_t* arguments;
+} functionCallNode_t;
+
+// CODE_BLOCK_NODE,
+typedef struct codeBlockNode_t {
+  astNode_t *satatementList;
+} codeBlockNode_t;
+
+// IF_NODE,
+typedef struct ifNode_t {
+  astNode_t *condition;
+  astNode_t *thenBlock;
+  astNode_t *elseBlock;
+} ifNode_t;
+
+// WHILE_NODE,
+typedef struct whileNode_t {
+  astNode_t *condition;
+  astNode_t *codeBlock;
+
+} whileNode_t;
+
 typedef struct astNode_t {
   astNodeType_e nodeType;
 
@@ -102,8 +141,12 @@ typedef struct astNode_t {
     varsDefinitionNode_t *varsDefinition;
     paramDefNode_t *paramDefNode;
     subprogramHeaderNode_t *subprogramHeader;
-    subprogramDefNode_t *subprogramDefNode;
-
+    subprogramDefNode_t *subprogramDef;
+    assignmentNode_t *assignment;
+    functionCallNode_t *functionCall;
+    codeBlockNode_t *codeBlock;
+    ifNode_t *ifNode;
+    whileNode_t *whileNode; 
   } payload; 
 
 } astNode_t;

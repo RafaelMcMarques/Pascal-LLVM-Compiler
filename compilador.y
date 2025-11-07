@@ -45,6 +45,9 @@ void yyerror(const char *s);
 %type <node> LISTA_DE_IDENTIFICADORES PROGRAMA DECLARACOES 
 %type <node> LISTA_DE_PARAMETROS ARGUMENTOS CABECALHO_DE_SUBPROGRAMA
 %type <node> DECLARACAO_DE_SUBPROGRAMA DECLARACOES_DE_SUBPROGRAMAS
+%type <node> ENUNCIADO VARIAVEL CHAMADA_DE_PROCEDIMENTO EXPRESSAO
+%type <node> LISTA_DE_EXPRESSOES ENUNCIADO_COMPOSTO ENUNCIADOS_OPCIONAIS
+%type <node> LISTA_DE_ENUNCIADOS 
 %type <varType> TIPO
 
 
@@ -55,21 +58,14 @@ void yyerror(const char *s);
 
 //program meuPrograma (Input, Output);
 PROGRAMA: 
-PROGRAM ID {
-  printf("Program id OK\n"); 
-}
+PROGRAM ID
 ABRE_PARENTESES LISTA_DE_IDENTIFICADORES FECHA_PARENTESES PONTO_VIRGULA
-{ printf("(input, output) OK\n"); }
 DECLARACOES
-{ printf("Declaracoes OK\n"); }
 DECLARACOES_DE_SUBPROGRAMAS 
-{ printf("Declaracoes de subprogramas OK\n");
-  printf("Iniciando funcao MAIN\n"); }
-ENUNCIADO_COMPOSTO //funcao main
+ENUNCIADO_COMPOSTO
 PONTO_FINAL {
   printf("Programa OK\n"); 
-  //TODO: edit this to create root node all at once  
-  astNode_t *node = createProgramNode($2, $9, $11);
+  astNode_t *node = createProgramNode($2, $7, $8, $9);
   printAST(node, "output.txt");
 }
 ;
@@ -123,7 +119,7 @@ DECLARACOES_DE_SUBPROGRAMAS DECLARACAO_DE_SUBPROGRAMA PONTO_VIRGULA {
 
 DECLARACAO_DE_SUBPROGRAMA: 
 CABECALHO_DE_SUBPROGRAMA DECLARACOES ENUNCIADO_COMPOSTO {
-  astNode_t* subprogramDef = createSubprogramDefNode($1, $2, NULL);
+  astNode_t* subprogramDef = createSubprogramDefNode($1, $2, $3);
   $$ = subprogramDef;
 } 
 ;
@@ -145,8 +141,8 @@ FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA {
 ARGUMENTOS: ABRE_PARENTESES LISTA_DE_PARAMETROS FECHA_PARENTESES {
   $$ = $2;
 }
-          | {$$ = NULL; } /* empty */ 
-          ;
+| {$$ = NULL; } /* empty */ 
+;
 
 // (a: integer): por valor
 // (var a: integer): por ref
@@ -177,52 +173,96 @@ LISTA_DE_IDENTIFICADORES DOIS_PONTOS TIPO  {
 
 // um enunciado composto pode conter enunciados compostos
 // sempre wrapped por BEGIN e END
-ENUNCIADO_COMPOSTO: BEGIN_TOKEN 
-                    { printf("=== Dentro de enun composto\n"); }
-                    ENUNCIADOS_OPCIONAIS END
-                    { printf("=== Fora de enun composto\n"); }
-                  ;
+ENUNCIADO_COMPOSTO: 
+BEGIN_TOKEN ENUNCIADOS_OPCIONAIS END {
+  $$ = $2;
+}
+;
 
 // posso ter BEGIN END; (vazio)
-ENUNCIADOS_OPCIONAIS: LISTA_DE_ENUNCIADOS
-                    | /* empty */
-                    ;
+ENUNCIADOS_OPCIONAIS: 
+LISTA_DE_ENUNCIADOS {
+  $$ = $1;
+}
+| /* empty */ {
+  $$ = NULL;
+}
+;
 
-LISTA_DE_ENUNCIADOS: ENUNCIADO 
-                   | LISTA_DE_ENUNCIADOS PONTO_VIRGULA ENUNCIADO 
-                   ;
+LISTA_DE_ENUNCIADOS: 
+ENUNCIADO {
+  astNode_t *list = createListNode(STATEMENT_LIST);
+  addChildToListNode(list, $1);
+  $$ = list;
+}
+| LISTA_DE_ENUNCIADOS PONTO_VIRGULA ENUNCIADO  {
+  addChildToListNode($1, $3);
+  $$ = $1;
+}
+;
 
 /* id = exp
 func(a)
 IF EXP
 WHILE */
-ENUNCIADO: VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO 
-        { printf("Atribuicao\n"); }
-         | CHAMADA_DE_PROCEDIMENTO
-        { printf("Chamada de func\n"); }
-         | ENUNCIADO_COMPOSTO
-         | IF EXPRESSAO THEN ENUNCIADO ELSE ENUNCIADO 
-        { printf("IF\n"); }
-         | WHILE EXPRESSAO DO ENUNCIADO
-        { printf("WHILE\n"); }
-         ;
+ENUNCIADO: 
+VARIAVEL OPERADOR_ATRIBUICAO EXPRESSAO {
+  astNode_t* assignment = createAssignmentNode($1, $3);
+  $$ = assignment;
+}
+| CHAMADA_DE_PROCEDIMENTO {
+  $$ = $1;
+}
+| ENUNCIADO_COMPOSTO {
+  $$ = $1;
+}
+| IF EXPRESSAO THEN ENUNCIADO ELSE ENUNCIADO  {
+  astNode_t *ifNode = createIfNode($2, $4, $6);
+  $$ = ifNode;
+}
+| WHILE EXPRESSAO DO ENUNCIADO {
+  astNode_t *whileNode = createWhileNode($2, $4);
+  $$ = whileNode;
+}
+  ;
 
-VARIAVEL: ID 
-        ;
+VARIAVEL: ID {
+  astNode_t *idNode = createIdNode2($1, VARIABLE_ID);
+  $$ = idNode;
+}
+;
 
-CHAMADA_DE_PROCEDIMENTO: ID // posso chamar funcoes sem params assim 
-                    | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES 
-                    ;
+CHAMADA_DE_PROCEDIMENTO: 
+ID {
+  astNode_t *idNode = createIdNode2($1, FUNCTION_ID);
+  astNode_t *functionCall = createFunctionCallNode(idNode, 0, NULL);
+  $$ = functionCall;
+}
+| ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES  {
+  astNode_t *idNode = createIdNode2($1, FUNCTION_ID);
+  astNode_t *functionCall = createFunctionCallNode(idNode, 1, NULL);
+  $$ = functionCall;
+}
+;
 
-LISTA_DE_EXPRESSOES: EXPRESSAO 
-                   | LISTA_DE_EXPRESSOES VIRGULA EXPRESSAO  
-                   ;
+LISTA_DE_EXPRESSOES: 
+EXPRESSAO {
+  $$ = NULL;
+}
+| LISTA_DE_EXPRESSOES VIRGULA EXPRESSAO {
+  $$ = NULL;
+}
+;
 
 // Operadores relacionais: =, <>, >, >=, <, <=
-EXPRESSAO: EXPRESSAO_SIMPLES
-         | EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES   
-            {printf("Operacao relacional\n");}
-         ;
+EXPRESSAO:
+EXPRESSAO_SIMPLES {
+  $$ = NULL;
+}
+| EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES {
+  $$ = NULL;
+}
+;
 
 // expressao simples eh uma conta com valor numerico
 EXPRESSAO_SIMPLES: TERMO

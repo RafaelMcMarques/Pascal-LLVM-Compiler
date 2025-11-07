@@ -25,13 +25,14 @@ void printASTRoot(astNode_t *root) {
 }
 
 astNode_t *createProgramNode(char *programName, astNode_t *varDeclarationsList,
-                             astNode_t *subprograms) {
+                             astNode_t *subprograms, astNode_t *codeBlock) {
   astNode_t *node = malloc(sizeof(astNode_t));
   programNode_t *programNode = malloc(sizeof(programNode_t));
 
   programNode->programName = programName;
   programNode->varDeclarationList = varDeclarationsList;
   programNode->subprogramDeclarationList = subprograms;
+  programNode->mainCodeBlock = codeBlock;
 
   node->nodeType = PROGRAM_NODE;
   node->payload.program = programNode;
@@ -148,7 +149,79 @@ astNode_t *createSubprogramDefNode(astNode_t *header, astNode_t *declarations,
   subprogramDefNode->header = header;
 
   node->nodeType = SUBPROGRAM_DEF_NODE;
-  node->payload.subprogramDefNode = subprogramDefNode;
+  node->payload.subprogramDef = subprogramDefNode;
+
+  return node;
+}
+
+astNode_t *createAssignmentNode(astNode_t *variable, astNode_t *exp) {
+  astNode_t *node = malloc(sizeof(astNode_t));
+  assignmentNode_t *assignmentNode = malloc(sizeof(assignmentNode_t));
+
+  assignmentNode->variable = variable;
+  assignmentNode->exp = exp;
+
+  node->nodeType = ASSIGNMENT_NODE;
+  node->payload.assignment = assignmentNode;
+
+  return node;
+}
+
+astNode_t *createFunctionCallNode(astNode_t *id, int hasArguments,
+                                  astNode_t *arguments) {
+
+  astNode_t *node = malloc(sizeof(astNode_t));
+  functionCallNode_t *functionCallNode = malloc(sizeof(functionCallNode_t));
+
+  functionCallNode->id = id;
+  functionCallNode->hasArguments = hasArguments;
+  functionCallNode->arguments = arguments;
+
+  node->nodeType = FUNCTION_CALL_NODE;
+  node->payload.functionCall = functionCallNode;
+
+  return node;
+}
+
+astNode_t *createCodeBlockNode(astNode_t *statementList) {
+
+  astNode_t *node = malloc(sizeof(astNode_t));
+  codeBlockNode_t *codeBlockNode = malloc(sizeof(codeBlockNode_t));
+
+  codeBlockNode->satatementList = statementList;
+
+  node->nodeType = CODE_BLOCK_NODE;
+  node->payload.codeBlock = codeBlockNode;
+
+  return node;
+}
+
+astNode_t *createIfNode(astNode_t *condition, astNode_t *thenBlock,
+                        astNode_t *elseBlock) {
+
+  astNode_t *node = malloc(sizeof(astNode_t));
+  ifNode_t *ifNode = malloc(sizeof(ifNode_t));
+
+  ifNode->condition = condition;
+  ifNode->thenBlock = thenBlock;
+  ifNode->elseBlock = elseBlock;
+
+  node->nodeType = IF_NODE;
+  node->payload.ifNode = ifNode;
+
+  return node;
+}
+
+astNode_t *createWhileNode(astNode_t *condition, astNode_t *codeBlock) {
+
+  astNode_t *node = malloc(sizeof(astNode_t));
+  whileNode_t *whileNode = malloc(sizeof(whileNode_t));
+
+  whileNode->condition = condition;
+  whileNode->codeBlock = codeBlock;
+
+  node->nodeType = WHILE_NODE;
+  node->payload.whileNode = whileNode;
 
   return node;
 }

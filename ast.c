@@ -4,6 +4,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+int PrintCodeBlock = 1;
+
 int depth = 0;
 FILE *file = NULL;
 
@@ -34,8 +36,8 @@ void printListNode(astNode_t *node) {
   listNode_t *listNode = node->payload.list;
 
   switch (listNode->listNodeType) {
-  case CODE_BLOCK:
-    myPrint("ENUNCIADO LIST");
+  case STATEMENT_LIST:
+    myPrint("STATEMENT LIST");
     break;
   case IDS_LIST:
     myPrint("IDS LIST");
@@ -95,9 +97,11 @@ void printIdNode(astNode_t *node) {
 
   myPrint("ID\n");
 
+  depth++;
   myPrint(idNode->idType == VARIABLE_ID ? "type: variable\n"
                                         : "type: function\n");
   myPrint("id: %s\n", idNode->id);
+  depth--;
 }
 
 void printParameterDefNode(astNode_t *node) {
@@ -105,10 +109,10 @@ void printParameterDefNode(astNode_t *node) {
 
   myPrint("PARAM DEF\n");
 
+  depth++;
   myPrint("varType: %d\n", paramDefNode->varType);
   myPrint("byReference: %d\n", paramDefNode->byReference);
 
-  depth++;
   printRec(paramDefNode->idsList);
   depth--;
 }
@@ -118,19 +122,16 @@ void printSubprogramHeaderNode(astNode_t *node) {
 
   myPrint("SUBPROGRAM HEADER\n");
 
+  depth++;
   myPrint("return type: %d\n", headerNode->returnType);
 
-  depth++;
   printRec(headerNode->id);
-  depth--;
-
-  depth++;
   printRec(headerNode->params);
   depth--;
 }
 
 void printSubprogramDefNode(astNode_t *node) {
-  subprogramDefNode_t *subpNode = node->payload.subprogramDefNode;
+  subprogramDefNode_t *subpNode = node->payload.subprogramDef;
 
   myPrint("SUBPROGRAM DECLARATION\n");
 
@@ -138,6 +139,70 @@ void printSubprogramDefNode(astNode_t *node) {
   printRec(subpNode->header);
   printRec(subpNode->declarations);
   printRec(subpNode->codeBlock);
+  depth--;
+}
+
+void printAssignmentNode(astNode_t *node) {
+  assignmentNode_t *asNode = node->payload.assignment;
+
+  myPrint("ASSIGNMENT\n");
+
+  depth++;
+  printRec(asNode->variable);
+  printRec(asNode->exp);
+  depth--;
+}
+
+void printFunctionCallNode(astNode_t *node) {
+  functionCallNode_t *fNode = node->payload.functionCall;
+
+  myPrint("FUNCTION CALL\n");
+
+  depth++;
+  printRec(fNode->id);
+
+  if (fNode->hasArguments) {
+    printRec(fNode->arguments);
+  } else {
+    myPrint("arguments: no\n");
+  }
+  depth--;
+}
+
+void printCodeBlockNode(astNode_t *node) {
+  myPrint("CODE BLOCK\n");
+
+  if (!PrintCodeBlock) {
+    return;
+  }
+
+  codeBlockNode_t *cbNode = node->payload.codeBlock;
+
+  depth++;
+  printRec(cbNode->satatementList);
+  depth--;
+}
+
+void printIfNode(astNode_t *node) {
+  ifNode_t *ifNode = node->payload.ifNode;
+
+  myPrint("IF STATEMENT\n");
+
+  depth++;
+  printRec(ifNode->condition);
+  printRec(ifNode->thenBlock);
+  printRec(ifNode->elseBlock);
+  depth--;
+}
+
+void printWhileNode(astNode_t *node) {
+  whileNode_t *whileNode = node->payload.whileNode;
+
+  myPrint("WHILE STATEMENT\n");
+
+  depth++;
+  printRec(whileNode->condition);
+  printRec(whileNode->codeBlock);
   depth--;
 }
 
@@ -169,6 +234,21 @@ void printRec(astNode_t *node) {
     break;
   case SUBPROGRAM_DEF_NODE:
     printSubprogramDefNode(node);
+    break;
+  case ASSIGNMENT_NODE:
+    printAssignmentNode(node);
+    break;
+  case FUNCTION_CALL_NODE:
+    printFunctionCallNode(node);
+    break;
+  case CODE_BLOCK_NODE:
+    printCodeBlockNode(node);
+    break;
+  case IF_NODE:
+    printIfNode(node);
+    break;
+  case WHILE_NODE:
+    printWhileNode(node);
     break;
   default:
     myPrint("UNKNOWN NODE\n");
