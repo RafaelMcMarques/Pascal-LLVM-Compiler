@@ -23,6 +23,8 @@ typedef enum astNodeType_e {
   FUNCTION_CALL_NODE,
   IF_NODE,
   WHILE_NODE,
+  EXPRESSION_NODE,
+  LITERAL_NODE,
 } astNodeType_e;
 
 typedef enum listNodeType_e {
@@ -34,7 +36,6 @@ typedef enum listNodeType_e {
   EXPRESSION_LIST,
 } listNodeType_e;
 
-
 typedef enum varType_e {
   INT_TYPE,
   REAL_TYPE,
@@ -44,6 +45,7 @@ typedef enum varType_e {
 typedef enum idType_e {
   VARIABLE_ID,
   FUNCTION_ID,
+  UNKNOWN,
 } idType_e;
 
 // LIST_NODE 
@@ -126,6 +128,20 @@ typedef struct whileNode_t {
 
 } whileNode_t;
 
+// EXPRESSION_NODE
+typedef struct expressionNode_t {
+  // lOperand op rOperand
+  // +/- lOperand 
+  char* op;
+  astNode_t *lOperand;
+  astNode_t *rOperand;
+} expressionNode_t;
+
+// LITERAL_NODE
+typedef struct literalNode_t {
+  char *literal;
+} literalNode_t;
+
 typedef struct astNode_t {
   astNodeType_e nodeType;
 
@@ -141,6 +157,8 @@ typedef struct astNode_t {
     functionCallNode_t *functionCall;
     ifNode_t *ifNode;
     whileNode_t *whileNode; 
+    expressionNode_t *expression;
+    literalNode_t *literal;
   } payload; 
 
 } astNode_t;

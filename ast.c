@@ -38,6 +38,8 @@ void printListNode(astNode_t *node) {
   switch (listNode->listNodeType) {
   case STATEMENT_LIST:
     myPrint("STATEMENT LIST (%d)\n", listNode->childrenCount);
+    if (PrintCodeBlock)
+      return;
     break;
   case IDS_LIST:
     myPrint("IDS LIST (%d)\n", listNode->childrenCount);
@@ -55,9 +57,6 @@ void printListNode(astNode_t *node) {
     myPrint("Unknown list type node");
     break;
   }
-
-  if (listNode->listNodeType == STATEMENT_LIST && !PrintCodeBlock)
-    return;
 
   depth++;
   for (int i = 0; i < listNode->childrenCount; i++) {

@@ -225,3 +225,31 @@ astNode_t *createWhileNode(astNode_t *condition, astNode_t *codeBlock) {
 
   return node;
 }
+
+astNode_t *createExpressionNode(char *op, astNode_t *lOp, astNode_t *rOp) {
+  printf("exp\n");
+  astNode_t *node = malloc(sizeof(astNode_t));
+  expressionNode_t *expNode = malloc(sizeof(expressionNode_t));
+
+  expNode->op = op;
+  expNode->lOperand = lOp;
+  expNode->rOperand = rOp;
+
+  node->nodeType = EXPRESSION_NODE;
+  node->payload.expression = expNode;
+
+  return node;
+}
+
+astNode_t *createLiteralNode(char *literal) {
+  printf("li\n");
+  astNode_t *node = malloc(sizeof(astNode_t));
+  literalNode_t *literalNode = malloc(sizeof(literalNode_t));
+
+  literalNode->literal = literal;
+
+  node->nodeType = LIST_NODE;
+  node->payload.literal = literalNode;
+
+  return node;
+}

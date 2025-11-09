@@ -44,4 +44,8 @@ astNode_t *createIfNode(astNode_t *condition, astNode_t *thenBlock,
 
 astNode_t *createWhileNode(astNode_t *condition, astNode_t *codeBlock);
 
+astNode_t *createExpressionNode(char *op, astNode_t *lOp, astNode_t *rOp);
+
+astNode_t *createLiteralNode(char *literal);
+
 #endif

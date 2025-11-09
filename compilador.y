@@ -47,8 +47,9 @@ void yyerror(const char *s);
 %type <node> DECLARACAO_DE_SUBPROGRAMA DECLARACOES_DE_SUBPROGRAMAS
 %type <node> ENUNCIADO VARIAVEL CHAMADA_DE_PROCEDIMENTO EXPRESSAO
 %type <node> LISTA_DE_EXPRESSOES ENUNCIADO_COMPOSTO ENUNCIADOS_OPCIONAIS
-%type <node> LISTA_DE_ENUNCIADOS 
+%type <node> LISTA_DE_ENUNCIADOS FATOR TERMO EXPRESSAO_SIMPLES
 %type <varType> TIPO
+%type <lexeme> SINAL
 
 
 // Define a associatividade dessas operacoes. A precedencia ja esta incluida na gramatica
@@ -64,7 +65,6 @@ DECLARACOES
 DECLARACOES_DE_SUBPROGRAMAS 
 ENUNCIADO_COMPOSTO
 PONTO_FINAL {
-  printf("Programa OK\n"); 
   astNode_t *node = createProgramNode($2, $7, $8, $9);
   printAST(node, "output.txt");
 }
@@ -247,52 +247,87 @@ ID {
 
 LISTA_DE_EXPRESSOES: 
 EXPRESSAO {
-  $$ = NULL;
+  printf("exp!\n");
+  astNode_t *listNode = createListNode(EXPRESSION_LIST);
+  addChildToListNode(listNode, $1);
+  $$ = listNode;
 }
 | LISTA_DE_EXPRESSOES VIRGULA EXPRESSAO {
-  $$ = NULL;
+  addChildToListNode($1, $3);
+  $$ = $1;
 }
 ;
 
 // Operadores relacionais: =, <>, >, >=, <, <=
 EXPRESSAO:
 EXPRESSAO_SIMPLES {
-  $$ = NULL;
+  $$ = NULL; // expression
 }
 | EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES {
-  $$ = NULL;
+  $$ = NULL; // relational expression
 }
 ;
 
 // expressao simples eh uma conta com valor numerico
-EXPRESSAO_SIMPLES: TERMO
-                 | SINAL TERMO   
-                {printf("Operacao sinal\n");}
-                 | EXPRESSAO_SIMPLES MAIS EXPRESSAO_SIMPLES 
-                {printf("Operacao mais\n");}
-                 | EXPRESSAO_SIMPLES MENOS EXPRESSAO_SIMPLES 
-                {printf("Operacao menos\n");}
-                 | EXPRESSAO_SIMPLES OR EXPRESSAO_SIMPLES  
-                {printf("Operacao or\n");}
-
-                 ;
+EXPRESSAO_SIMPLES: 
+TERMO {
+  $$ = $1;
+}
+| SINAL TERMO {
+  astNode_t *expNode = createExpressionNode($1, $2, NULL);
+  $$ = expNode;
+} 
+| EXPRESSAO_SIMPLES MAIS EXPRESSAO_SIMPLES {
+  astNode_t *expNode = createExpressionNode($2, $1, $3);
+  $$ = expNode;
+}
+| EXPRESSAO_SIMPLES MENOS EXPRESSAO_SIMPLES {
+  astNode_t *expNode = createExpressionNode($2, $1, $3);
+  $$ = expNode;
+} 
+| EXPRESSAO_SIMPLES OR EXPRESSAO_SIMPLES {
+  astNode_t *expNode = createExpressionNode($2, $1, $3);
+  $$ = expNode;
+} 
+;
 
 // resultado de uma operacao multiplicativa (*, /, div, mod, and)
-TERMO: FATOR
-     | TERMO OPERADOR_MULTIPLICATIVO FATOR  
-    {printf("Operacao multiplicativa\n");}
-     ;
+TERMO: 
+FATOR {
+  $$ = $1;
+}
+| TERMO OPERADOR_MULTIPLICATIVO FATOR {
+  astNode_t *expNode = createExpressionNode($2, $1, $3);
+  $$ = expNode;
+}
+;
 
 FATOR: 
-    ID
-    | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES  
-    | NUM 
-    | ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES 
-    ;
+ID {
+  astNode_t* idNode = createIdNode2($1, UNKNOWN);
+  $$ = idNode;
+}
+| ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES {
+  astNode_t *idNode = createIdNode2($1, FUNCTION_ID);
+  astNode_t *callNode = createFunctionCallNode(idNode, 1, $3);
+  $$ = callNode;
+}
+| NUM {
+  astNode_t *literalNode = createLiteralNode($1);
+}
+| ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES {
+  $$ = $2;
+} 
+;
 
-SINAL: MAIS
-     | MENOS
-     ;
+SINAL: 
+MAIS {
+  $$ = $1;
+}
+| MENOS {
+  $$ = $1;
+}
+;
 
 
 %%
