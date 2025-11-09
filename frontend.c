@@ -183,17 +183,17 @@ astNode_t *createFunctionCallNode(astNode_t *id, int hasArguments,
   return node;
 }
 
-astNode_t *createCodeBlockNode(astNode_t *statementList) {
+astNode_t *wrap_node(astNode_t *wrapped, listNodeType_e type) {
+  // already wrapped
+  if (wrapped->nodeType == LIST_NODE) {
+    return wrapped;
+  }
 
-  astNode_t *node = malloc(sizeof(astNode_t));
-  codeBlockNode_t *codeBlockNode = malloc(sizeof(codeBlockNode_t));
+  astNode_t *listNode = malloc(sizeof(astNode_t));
+  listNode = createListNode(type);
 
-  codeBlockNode->satatementList = statementList;
-
-  node->nodeType = CODE_BLOCK_NODE;
-  node->payload.codeBlock = codeBlockNode;
-
-  return node;
+  addChildToListNode(listNode, wrapped);
+  return listNode;
 }
 
 astNode_t *createIfNode(astNode_t *condition, astNode_t *thenBlock,
@@ -203,8 +203,8 @@ astNode_t *createIfNode(astNode_t *condition, astNode_t *thenBlock,
   ifNode_t *ifNode = malloc(sizeof(ifNode_t));
 
   ifNode->condition = condition;
-  ifNode->thenBlock = thenBlock;
-  ifNode->elseBlock = elseBlock;
+  ifNode->thenBlock = wrap_node(thenBlock, STATEMENT_LIST);
+  ifNode->elseBlock = wrap_node(elseBlock, STATEMENT_LIST);
 
   node->nodeType = IF_NODE;
   node->payload.ifNode = ifNode;
@@ -218,7 +218,7 @@ astNode_t *createWhileNode(astNode_t *condition, astNode_t *codeBlock) {
   whileNode_t *whileNode = malloc(sizeof(whileNode_t));
 
   whileNode->condition = condition;
-  whileNode->codeBlock = codeBlock;
+  whileNode->codeBlock = wrap_node(codeBlock, STATEMENT_LIST);
 
   node->nodeType = WHILE_NODE;
   node->payload.whileNode = whileNode;

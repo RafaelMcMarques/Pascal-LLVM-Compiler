@@ -37,25 +37,28 @@ void printListNode(astNode_t *node) {
 
   switch (listNode->listNodeType) {
   case STATEMENT_LIST:
-    myPrint("STATEMENT LIST");
+    myPrint("STATEMENT LIST (%d)\n", listNode->childrenCount);
     break;
   case IDS_LIST:
-    myPrint("IDS LIST");
+    myPrint("IDS LIST (%d)\n", listNode->childrenCount);
     break;
   case SUBPROGRAM_LIST:
-    myPrint("SUBPROGRAM LIST");
+    myPrint("SUBPROGRAM LIST (%d)\n", listNode->childrenCount);
     break;
   case VARS_DEFINITIONS_LIST:
-    myPrint("VAR DEFS LIST");
+    myPrint("VAR DEFS LIST (%d)\n", listNode->childrenCount);
     break;
   case PARAM_DEF_LIST:
-    myPrint("PARAM DEFS LIST");
+    myPrint("PARAM DEFS LIST (%d)\n", listNode->childrenCount);
     break;
   default:
     myPrint("Unknown list type node");
     break;
   }
-  myPrint("(%d)\n", listNode->childrenCount);
+
+  if (listNode->listNodeType == STATEMENT_LIST && !PrintCodeBlock)
+    return;
+
   depth++;
   for (int i = 0; i < listNode->childrenCount; i++) {
     if (!listNode->children[i]) {
@@ -169,20 +172,6 @@ void printFunctionCallNode(astNode_t *node) {
   depth--;
 }
 
-void printCodeBlockNode(astNode_t *node) {
-  myPrint("CODE BLOCK\n");
-
-  if (!PrintCodeBlock) {
-    return;
-  }
-
-  codeBlockNode_t *cbNode = node->payload.codeBlock;
-
-  depth++;
-  printRec(cbNode->satatementList);
-  depth--;
-}
-
 void printIfNode(astNode_t *node) {
   ifNode_t *ifNode = node->payload.ifNode;
 
@@ -240,9 +229,6 @@ void printRec(astNode_t *node) {
     break;
   case FUNCTION_CALL_NODE:
     printFunctionCallNode(node);
-    break;
-  case CODE_BLOCK_NODE:
-    printCodeBlockNode(node);
     break;
   case IF_NODE:
     printIfNode(node);

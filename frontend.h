@@ -38,8 +38,6 @@ astNode_t *createAssignmentNode(astNode_t *variable, astNode_t *exp);
 astNode_t *createFunctionCallNode(astNode_t *id, int hasArguments,
                                   astNode_t *arguments);
 
-astNode_t *createCodeBlockNode(astNode_t *statementList);
-
 
 astNode_t *createIfNode(astNode_t *condition, astNode_t *thenBlock,
                         astNode_t *elseBlock);
