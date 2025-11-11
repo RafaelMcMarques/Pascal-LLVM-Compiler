@@ -38,7 +38,7 @@ void printListNode(astNode_t *node) {
   switch (listNode->listNodeType) {
   case STATEMENT_LIST:
     myPrint("STATEMENT LIST (%d)\n", listNode->childrenCount);
-    if (PrintCodeBlock)
+    if (!PrintCodeBlock)
       return;
     break;
   case IDS_LIST:
@@ -53,8 +53,11 @@ void printListNode(astNode_t *node) {
   case PARAM_DEF_LIST:
     myPrint("PARAM DEFS LIST (%d)\n", listNode->childrenCount);
     break;
+  case EXPRESSION_LIST:
+    myPrint("EXPRESSION LIST (%d)\n", listNode->childrenCount);
+    break;
   default:
-    myPrint("Unknown list type node");
+    myPrint("Unknown list type node\n");
     break;
   }
 
@@ -100,8 +103,17 @@ void printIdNode(astNode_t *node) {
   myPrint("ID\n");
 
   depth++;
-  myPrint(idNode->idType == VARIABLE_ID ? "type: variable\n"
-                                        : "type: function\n");
+  switch (idNode->idType) {
+  case VARIABLE_ID:
+    myPrint("type: variable\n");
+    break;
+  case FUNCTION_ID:
+    myPrint("type: function\n");
+    break;
+  case UNKNOWN:
+    myPrint("type: unkown\n");
+    break;
+  }
   myPrint("id: %s\n", idNode->id);
   depth--;
 }
@@ -194,6 +206,28 @@ void printWhileNode(astNode_t *node) {
   depth--;
 }
 
+void printExpressionNode(astNode_t *node) {
+  expressionNode_t *expressionNode = node->payload.expression;
+
+  myPrint("EXPRESSION\n");
+
+  depth++;
+  printRec(expressionNode->lOperand);
+  myPrint("op: %s\n", expressionNode->op);
+  printRec(expressionNode->rOperand);
+  depth--;
+}
+
+void printLiteralNode(astNode_t *node) {
+  literalNode_t *literalNode = node->payload.literal;
+
+  myPrint("LITERAL\n");
+
+  depth++;
+  myPrint("literal: %s\n", literalNode->literal);
+  depth--;
+}
+
 void printRec(astNode_t *node) {
   if (!node) {
     myPrint("NULL NODE\n");
@@ -235,6 +269,12 @@ void printRec(astNode_t *node) {
   case WHILE_NODE:
     printWhileNode(node);
     break;
+  case EXPRESSION_NODE:
+    printExpressionNode(node);
+    break;
+  case LITERAL_NODE:
+    printLiteralNode(node);
+    break;
   default:
     myPrint("UNKNOWN NODE\n");
     break;
@@ -243,7 +283,7 @@ void printRec(astNode_t *node) {
 
 void printAST(astNode_t *root, char *file_name) {
   if (file_name) {
-    file = fopen(file_name, "a"); // open file for writing
+    file = fopen(file_name, "w"); // open file for writing
     depth = 0;
     if (file == NULL) {
       printf("Error opening file.\n");

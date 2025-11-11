@@ -32,16 +32,32 @@ numero      {digitos}(\.{digitos})?([Ee][+-]?{digitos})?
 "while" { return WHILE; }
 "do" { return DO; }
 ":=" { return OPERADOR_ATRIBUICAO; }
-("="|"<>"|">"|">="|"<"|"<=") { return OPERADOR_RELACIONAL; }
-"+" { return MAIS; }
-"-" { return MENOS; }
-"or" { return OR; }
-("*"|"/"|"div"|"mod"|"and") { return OPERADOR_MULTIPLICATIVO; }
+("="|"<>"|">"|">="|"<"|"<=") { 
+  yylval.lexeme = strdup(yytext);
+  return OPERADOR_RELACIONAL; 
+}
+"+" { 
+  yylval.lexeme = strdup(yytext);
+  return MAIS; 
+}
+"-" { 
+  yylval.lexeme = strdup(yytext);
+  return MENOS; 
+}
+"or" {
+  yylval.lexeme = strdup(yytext);
+  return OR; 
+}
+("*"|"/"|"div"|"mod"|"and") { 
+  yylval.lexeme = strdup(yytext);
+  return OPERADOR_MULTIPLICATIVO; 
+}
 {id} { 
   yylval.lexeme = strdup(yytext); 
   return ID; 
 }
 {numero} {
+    yylval.lexeme = strdup(yytext);
     return NUM; 
 }
  

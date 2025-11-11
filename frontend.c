@@ -242,13 +242,12 @@ astNode_t *createExpressionNode(char *op, astNode_t *lOp, astNode_t *rOp) {
 }
 
 astNode_t *createLiteralNode(char *literal) {
-  printf("li\n");
   astNode_t *node = malloc(sizeof(astNode_t));
   literalNode_t *literalNode = malloc(sizeof(literalNode_t));
 
   literalNode->literal = literal;
 
-  node->nodeType = LIST_NODE;
+  node->nodeType = LITERAL_NODE;
   node->payload.literal = literalNode;
 
   return node;

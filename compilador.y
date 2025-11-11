@@ -240,14 +240,13 @@ ID {
 }
 | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES  {
   astNode_t *idNode = createIdNode2($1, FUNCTION_ID);
-  astNode_t *functionCall = createFunctionCallNode(idNode, 1, NULL);
+  astNode_t *functionCall = createFunctionCallNode(idNode, 1, $3);
   $$ = functionCall;
 }
 ;
 
 LISTA_DE_EXPRESSOES: 
 EXPRESSAO {
-  printf("exp!\n");
   astNode_t *listNode = createListNode(EXPRESSION_LIST);
   addChildToListNode(listNode, $1);
   $$ = listNode;
@@ -261,10 +260,10 @@ EXPRESSAO {
 // Operadores relacionais: =, <>, >, >=, <, <=
 EXPRESSAO:
 EXPRESSAO_SIMPLES {
-  $$ = NULL; // expression
+  $$ = $1; // expression
 }
 | EXPRESSAO_SIMPLES OPERADOR_RELACIONAL EXPRESSAO_SIMPLES {
-  $$ = NULL; // relational expression
+  $$ = createExpressionNode($2, $1, $3); // relational expression
 }
 ;
 
@@ -314,6 +313,7 @@ ID {
 }
 | NUM {
   astNode_t *literalNode = createLiteralNode($1);
+  $$ = literalNode;
 }
 | ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES {
   $$ = $2;
