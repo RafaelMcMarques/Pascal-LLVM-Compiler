@@ -4,14 +4,14 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-int PrintCodeBlock = 1;
+static int PrintCodeBlock = 1;
 
-int depth = 0;
-FILE *file = NULL;
+static int depth = 0;
+static FILE *file = NULL;
 
 void printRec(astNode_t *node);
 
-void myPrint(const char *fmt, ...) {
+static void myPrint(const char *fmt, ...) {
   // printf("Called myprint\n");
   for (int i = 0; i < depth; i++) {
     if (file)

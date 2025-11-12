@@ -15,6 +15,7 @@ void yyerror(const char *s);
   #include "AST_node_types.h"
   #include "frontend.h"
   #include "ast.h"
+  #include "backend.h"
 
   typedef struct astNode_t astNode_t;
   typedef enum lexemeType_e lexemeType_e;
@@ -67,6 +68,7 @@ ENUNCIADO_COMPOSTO
 PONTO_FINAL {
   astNode_t *node = createProgramNode($2, $7, $8, $9);
   printAST(node, "output.txt");
+  resolveASTtoLLVM(node);
 }
 ;
 
