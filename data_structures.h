@@ -38,7 +38,7 @@ typedef struct symbol_t {
 
   // only if function
   int paramCount;
-  parameter_t params[100];
+  parameter_t* params[100];
 } symbol_t;
 
 

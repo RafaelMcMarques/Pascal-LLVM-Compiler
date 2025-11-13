@@ -17,7 +17,7 @@ hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
 void resolveToLLVM(astNode_t *node);
 
-int isScopeLocal() { return LocalSymTable != NULL; }
+/* ======= PRINT HELPERS =======*/
 
 char *getVarTypeLLVM(varType_e varType) {
   char *type;
@@ -36,13 +36,6 @@ char *getVarTypeLLVM(varType_e varType) {
     break;
   }
   return type;
-}
-
-hashTable_t *getCurrentSymTab() {
-  if (isScopeLocal())
-    return (hashTable_t *)LocalSymTable;
-
-  return GlobalSymTable;
 }
 
 static void myPrint(const char *fmt, ...) {
@@ -76,6 +69,58 @@ static void myPrintSL(const char *fmt, ...) {
   }
   va_end(args);
 }
+
+void printSymbol(symbol_t *symb) {
+
+  printf("SYMBOL %s:\n", symb->srcName);
+  char *vof = symb->symbType == VARIABLE_ID ? "var" : "func";
+  printf("  symbType: %s\n", vof);
+  char *type = getVarTypeLLVM(symb->returnType);
+  printf("  returnType: %s\n", type);
+
+  if (symb->symbType != FUNCTION_ID) {
+    printf("  isPtr: %d\n", symb->isPtr);
+  } else {
+    printf("  paramCount: %d\n", symb->paramCount);
+    printf("  Parameters:");
+    for (int i = 0; i < symb->paramCount && i < 100; i++) {
+      parameter_t *p = symb->params[i];
+      char *pType = getVarTypeLLVM(p->type);
+      printf("%s byRef=%d, ", pType, p->byReference);
+    }
+    printf("\n");
+  }
+}
+
+/* ===== TAB SYMB HELPERS ====== */
+
+int isScopeLocal() { return LocalSymTable != NULL; }
+
+void insertSymbolGlobalScope(symbol_t *symb) {
+  if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
+    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
+    exit(1);
+  }
+}
+
+hashTable_t *getCurrentSymTab() {
+  if (isScopeLocal())
+    return (hashTable_t *)LocalSymTable;
+
+  return GlobalSymTable;
+}
+
+// inserts a symbol in current scope (use only for variables)
+void insertSymbolCurrScope(symbol_t *symb) {
+  hashTable_t *currSymTab = getCurrentSymTab();
+
+  if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
+    printf("ERROR: possible redefinition of %s\n", symb->srcName);
+    exit(1);
+  }
+}
+
+/* ======= LIST ITERATOR =======*/
 
 void resolveListNode(astNode_t *node) {
 
@@ -118,6 +163,7 @@ void resolveListNode(astNode_t *node) {
   depth--;
 }
 
+/* ===== PROGRAM NODE ===== */
 void resolveProgramNode(astNode_t *node) {
   programNode_t *programNode = node->payload.program;
 
@@ -131,16 +177,9 @@ void resolveProgramNode(astNode_t *node) {
   depth--;
 }
 
-void insertSymbolCurrScope(symbol_t *symb) {
-  hashTable_t *currSymTab = getCurrentSymTab();
+/* ===== VARIABLE DECLARATIONS ===== */
 
-  if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
-    printf("ERROR: possible redefinition of %s\n", symb->srcName);
-    exit(1);
-  }
-}
-
-void declareVariable(symbol_t *symb) {
+void declareVariableLLVM(symbol_t *symb) {
   char *name = symb->srcName;
   char *type = getVarTypeLLVM(symb->returnType);
 
@@ -151,7 +190,7 @@ void declareVariable(symbol_t *symb) {
   }
 }
 
-// leaf
+// add vars to symTab and generate llvm for declaration
 void resolveVarsDefNode(astNode_t *node) {
   varsDefinitionNode_t *varsDefNode = node->payload.varsDefinition;
 
@@ -169,33 +208,14 @@ void resolveVarsDefNode(astNode_t *node) {
     symb->isPtr = 1;
 
     insertSymbolCurrScope(symb);
-    declareVariable(symb);
+    declareVariableLLVM(symb);
   }
   depth--;
 }
 
-// folha
-void resolveIdNode(astNode_t *node) {
-  idNode_t *idNode = node->payload.id;
+/* ====== FUNCTIONS ====== */
 
-  myPrint("ID\n");
-
-  depth++;
-  switch (idNode->idType) {
-  case VARIABLE_ID:
-    myPrint("type: variable\n");
-    break;
-  case FUNCTION_ID:
-    myPrint("type: function\n");
-    break;
-  case UNKNOWN:
-    myPrint("type: unkown\n");
-    break;
-  }
-  myPrint("id: %s\n", idNode->id);
-  depth--;
-}
-
+// add parameters to sym tab and generate llvm
 void resolveParameterDefNode(astNode_t *node) {
   paramDefNode_t *paramDefNode = node->payload.paramDefNode;
 
@@ -228,7 +248,8 @@ void resolveParameterDefNode(astNode_t *node) {
   depth--;
 }
 
-void resolveHeaderParams(listNode_t *paramsList) {
+// register params in SymTab and generate LLVM
+void resolveHeaderParamsList(listNode_t *paramsList) {
   char *separator = "";
   myPrintSL("(");
   for (int i = 0; i < paramsList->childrenCount; i++) {
@@ -239,27 +260,55 @@ void resolveHeaderParams(listNode_t *paramsList) {
   myPrintSL(")\n");
 }
 
+// returns symbol for a function (name, type, params...)
+symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
+  symbol_t *symb = malloc(sizeof(symbol_t));
+  symb->srcName = headerNode->id->payload.id->id;
+  symb->returnType = headerNode->returnType;
+  symb->symbType = FUNCTION_ID;
+
+  // params
+  listNode_t *paramsList = headerNode->params->payload.list;
+  int paramCount = 0;
+  for (int i = 0; i < paramsList->childrenCount; i++) {
+    paramDefNode_t *paramDefNode =
+        paramsList->children[i]->payload.paramDefNode;
+    listNode_t *idsList = paramDefNode->idsList->payload.list;
+
+    varType_e type = paramDefNode->varType;
+    int byRef = paramDefNode->byReference;
+    int quant = idsList->childrenCount;
+
+    for (int j = 0; j < quant; j++) {
+      parameter_t *param = malloc(sizeof(parameter_t));
+      param->byReference = byRef;
+      param->type = type;
+      symb->params[paramCount] = param;
+      paramCount++;
+    }
+  }
+
+  symb->paramCount = paramCount;
+  return symb;
+}
+
+// generate code and symbol for function declaration
 void resolveSubprogramHeaderNode(astNode_t *node) {
   subprogramHeaderNode_t *headerNode = node->payload.subprogramHeader;
 
   myPrint("SUBPROGRAM HEADER\n");
   depth++;
 
-  // insert int symtable
-  symbol_t *symb = malloc(sizeof(symbol_t));
-  symb->srcName = headerNode->id->payload.id->id;
-  symb->returnType = headerNode->returnType;
-  if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
-    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
-    exit(1);
-  }
+  // insert into symtable
+  symbol_t *symb = getFunctionSymbol(headerNode);
+  insertSymbolGlobalScope(symb);
 
-  // declare
+  // declare in LLVM
   char *type = getVarTypeLLVM(headerNode->returnType);
   myPrint("define %s @%s", type, symb->srcName);
 
-  // params
-  resolveHeaderParams(headerNode->params->payload.list);
+  // declar params in LLVM and add them to local symTable
+  resolveHeaderParamsList(headerNode->params->payload.list);
 
   depth--;
 }
@@ -368,9 +417,6 @@ void resolveToLLVM(astNode_t *node) {
     break;
   case VARS_DEFINITION_NODE:
     resolveVarsDefNode(node);
-    break;
-  case ID_NODE:
-    resolveIdNode(node);
     break;
   case PARAMETER_DEF_NODE:
     resolveParameterDefNode(node);
