@@ -15,12 +15,12 @@ static unsigned long hash_function(const char *str) {
 }
 
 /* --- Criação da tabela --- */
-HashTable *ht_create(size_t size) {
-  HashTable *ht = malloc(sizeof(HashTable));
+hashTable_t *createHT(size_t size) {
+  hashTable_t *ht = malloc(sizeof(hashTable_t));
   if (!ht)
     return NULL;
   ht->size = size > 0 ? size : INITIAL_SIZE;
-  ht->buckets = calloc(ht->size, sizeof(HashNode *));
+  ht->buckets = calloc(ht->size, sizeof(hashNode_t *));
   if (!ht->buckets) {
     free(ht);
     return NULL;
@@ -29,11 +29,11 @@ HashTable *ht_create(size_t size) {
 }
 
 /* --- Inserção --- */
-int ht_insert(HashTable *ht, const char *key, void *value) {
+int insertHT(hashTable_t *ht, const char *key, void *value) {
   if (!ht || !key)
     return 0;
   unsigned long hash = hash_function(key) % ht->size;
-  HashNode *node = ht->buckets[hash];
+  hashNode_t *node = ht->buckets[hash];
 
   /* Verifica se chave já existe */
   while (node) {
@@ -45,7 +45,7 @@ int ht_insert(HashTable *ht, const char *key, void *value) {
   }
 
   /* Cria novo nó */
-  node = malloc(sizeof(HashNode));
+  node = malloc(sizeof(hashNode_t));
   if (!node)
     return 0;
   node->key = strdup(key);
@@ -56,11 +56,11 @@ int ht_insert(HashTable *ht, const char *key, void *value) {
 }
 
 /* --- Busca --- */
-void *ht_get(HashTable *ht, const char *key) {
+void *getFromHT(hashTable_t *ht, const char *key) {
   if (!ht || !key)
     return NULL;
   unsigned long hash = hash_function(key) % ht->size;
-  HashNode *node = ht->buckets[hash];
+  hashNode_t *node = ht->buckets[hash];
 
   while (node) {
     if (strcmp(node->key, key) == 0)
@@ -71,11 +71,11 @@ void *ht_get(HashTable *ht, const char *key) {
 }
 
 /* --- Remoção --- */
-int ht_remove(HashTable *ht, const char *key) {
+int removeFromHT(hashTable_t *ht, const char *key) {
   if (!ht || !key)
     return 0;
   unsigned long hash = hash_function(key) % ht->size;
-  HashNode *node = ht->buckets[hash], *prev = NULL;
+  hashNode_t *node = ht->buckets[hash], *prev = NULL;
 
   while (node) {
     if (strcmp(node->key, key) == 0) {
@@ -94,13 +94,13 @@ int ht_remove(HashTable *ht, const char *key) {
 }
 
 /* --- Destruição completa --- */
-void ht_destroy(HashTable *ht) {
+void destroyHT(hashTable_t *ht) {
   if (!ht)
     return;
   for (size_t i = 0; i < ht->size; i++) {
-    HashNode *node = ht->buckets[i];
+    hashNode_t *node = ht->buckets[i];
     while (node) {
-      HashNode *tmp = node;
+      hashNode_t *tmp = node;
       node = node->next;
       free(tmp->key);
       free(tmp);
@@ -108,10 +108,11 @@ void ht_destroy(HashTable *ht) {
   }
   free(ht->buckets);
   free(ht);
+  ht = NULL;
 }
 
-Stack *createStack() {
-  Stack *s = malloc(sizeof(Stack));
+stack_t *createStack() {
+  stack_t *s = malloc(sizeof(stack_t));
   if (!s) {
     perror("Erro ao criar pilha");
     exit(EXIT_FAILURE);
@@ -120,8 +121,8 @@ Stack *createStack() {
   return s;
 }
 
-void push(Stack *s, void *data) {
-  StackNode *n = malloc(sizeof(StackNode));
+void stackPush(stack_t *s, void *data) {
+  stackNode_t *n = malloc(sizeof(stackNode_t));
   if (!n) {
     perror("Erro ao empilhar");
     exit(EXIT_FAILURE);
@@ -131,26 +132,26 @@ void push(Stack *s, void *data) {
   s->top = n;
 }
 
-void *pop(Stack *s) {
+void *stackPop(stack_t *s) {
   if (!s->top)
     return NULL;
-  StackNode *n = s->top;
+  stackNode_t *n = s->top;
   void *data = n->data;
   s->top = n->next;
   free(n);
   return data;
 }
 
-void *peek(Stack *s) {
+void *stackPeek(stack_t *s) {
   if (!s->top)
     return NULL;
   return s->top->data;
 }
 
-int isEmpty(Stack *s) { return s->top == NULL; }
+int stackIsEmpty(stack_t *s) { return s->top == NULL; }
 
-void freeStack(Stack *s) {
-  while (!isEmpty(s))
-    pop(s);
+void freeStack(stack_t *s) {
+  while (!stackIsEmpty(s))
+    stackPop(s);
   free(s);
 }

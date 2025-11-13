@@ -133,7 +133,7 @@ FUNCTION ID ARGUMENTOS DOIS_PONTOS TIPO PONTO_VIRGULA {
   $$ = header;
 }
 | PROCEDURE ID ARGUMENTOS PONTO_VIRGULA  {
-  astNode_t *idNode = createIdNode($2);
+  astNode_t *idNode = createIdNode2($2, FUNCTION_ID);
   astNode_t *header = createSubprogramHeaderNode(idNode, NO_TYPE, $3);
   $$ = header;
 }

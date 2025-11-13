@@ -5,13 +5,45 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static int PrintCodeBlock = 1;
 
 static int depth = 0;
 static FILE *file = NULL;
 
+hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
+
 void resolveToLLVM(astNode_t *node);
+
+int isScopeLocal() { return LocalSymTable != NULL; }
+
+char *getVarTypeLLVM(varType_e varType) {
+  char *type;
+  switch (varType) {
+  case (INT_TYPE):
+    type = "i32";
+    break;
+  case (REAL_TYPE):
+    type = "float";
+    break;
+  case (NO_TYPE):
+    type = "void";
+    break;
+  default:
+    type = "errorType";
+    break;
+  }
+  return type;
+}
+
+hashTable_t *getCurrentSymTab() {
+  if (isScopeLocal())
+    return (hashTable_t *)LocalSymTable;
+
+  return GlobalSymTable;
+}
 
 static void myPrint(const char *fmt, ...) {
   // printf("Called myprint\n");
@@ -22,6 +54,18 @@ static void myPrint(const char *fmt, ...) {
       printf("\t");
   }
 
+  va_list args;
+  va_start(args, fmt);
+  if (file) {
+    vfprintf(file, fmt, args);
+    fflush(file);
+  } else {
+    vprintf(fmt, args);
+  }
+  va_end(args);
+}
+
+static void myPrintSL(const char *fmt, ...) {
   va_list args;
   va_start(args, fmt);
   if (file) {
@@ -87,14 +131,46 @@ void resolveProgramNode(astNode_t *node) {
   depth--;
 }
 
+void insertSymbolCurrScope(symbol_t *symb) {
+  hashTable_t *currSymTab = getCurrentSymTab();
+
+  if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
+    printf("ERROR: possible redefinition of %s\n", symb->srcName);
+    exit(1);
+  }
+}
+
+void declareVariable(symbol_t *symb) {
+  char *name = symb->srcName;
+  char *type = getVarTypeLLVM(symb->returnType);
+
+  if (isScopeLocal()) {
+    myPrint("%%%s = alloca %s;\n", name, type);
+  } else {
+    myPrint("@%s = global %s;\n", name, type);
+  }
+}
+
+// leaf
 void resolveVarsDefNode(astNode_t *node) {
   varsDefinitionNode_t *varsDefNode = node->payload.varsDefinition;
 
   myPrint("VARS DEFINITION\n");
-  myPrint("vars type: %d\n", varsDefNode->varsType);
 
   depth++;
-  resolveToLLVM(varsDefNode->varsList);
+  listNode_t *varsList = varsDefNode->varsList->payload.list;
+  for (int i = 0; i < varsList->childrenCount; i++) {
+    idNode_t *idNode = varsList->children[i]->payload.id;
+    symbol_t *symb = malloc(sizeof(symbol_t));
+
+    symb->srcName = strdup(idNode->id);
+    symb->returnType = varsDefNode->varsType;
+    symb->symbType = VARIABLE_ID;
+    symb->isPtr = 1;
+
+    insertSymbolCurrScope(symb);
+    declareVariable(symb);
+  }
   depth--;
 }
 
@@ -123,26 +199,68 @@ void resolveIdNode(astNode_t *node) {
 void resolveParameterDefNode(astNode_t *node) {
   paramDefNode_t *paramDefNode = node->payload.paramDefNode;
 
-  myPrint("PARAM DEF\n");
+  varType_e type = paramDefNode->varType;
+  char *typeStr = getVarTypeLLVM(type);
+  int byRef = paramDefNode->byReference;
+
+  listNode_t *idList = paramDefNode->idsList->payload.list;
 
   depth++;
-  myPrint("varType: %d\n", paramDefNode->varType);
-  myPrint("byReference: %d\n", paramDefNode->byReference);
+  char *separator = "";
+  for (int i = 0; i < idList->childrenCount; i++) {
+    idNode_t *idNode = idList->children[i]->payload.id;
+    symbol_t *symb = malloc(sizeof(symbol_t));
 
-  resolveToLLVM(paramDefNode->idsList);
+    // add to symbTab
+    symb->srcName = idNode->id;
+    symb->symbType = VARIABLE_ID;
+    symb->returnType = type;
+    symb->isPtr = byRef;
+    insertSymbolCurrScope(symb);
+
+    if (byRef) {
+      myPrintSL("%s%s* %%%s", separator, typeStr, symb->srcName);
+    } else {
+      myPrintSL("%s%s %%%s", separator, typeStr, symb->srcName);
+    }
+    separator = ", ";
+  }
   depth--;
+}
+
+void resolveHeaderParams(listNode_t *paramsList) {
+  char *separator = "";
+  myPrintSL("(");
+  for (int i = 0; i < paramsList->childrenCount; i++) {
+    myPrintSL("%s", separator);
+    resolveParameterDefNode(paramsList->children[i]);
+    separator = ", ";
+  }
+  myPrintSL(")\n");
 }
 
 void resolveSubprogramHeaderNode(astNode_t *node) {
   subprogramHeaderNode_t *headerNode = node->payload.subprogramHeader;
 
   myPrint("SUBPROGRAM HEADER\n");
-
   depth++;
-  myPrint("return type: %d\n", headerNode->returnType);
 
-  resolveToLLVM(headerNode->id);
-  resolveToLLVM(headerNode->params);
+  // insert int symtable
+  symbol_t *symb = malloc(sizeof(symbol_t));
+  symb->srcName = headerNode->id->payload.id->id;
+  symb->returnType = headerNode->returnType;
+  if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
+    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
+    exit(1);
+  }
+
+  // declare
+  char *type = getVarTypeLLVM(headerNode->returnType);
+  myPrint("define %s @%s", type, symb->srcName);
+
+  // params
+  resolveHeaderParams(headerNode->params->payload.list);
+
   depth--;
 }
 
@@ -151,11 +269,15 @@ void resolveSubprogramDefNode(astNode_t *node) {
 
   myPrint("SUBPROGRAM DECLARATION\n");
 
+  LocalSymTable = createHT(0);
+
   depth++;
   resolveToLLVM(subpNode->header);
   resolveToLLVM(subpNode->declarations);
   resolveToLLVM(subpNode->codeBlock);
   depth--;
+
+  destroyHT(LocalSymTable);
 }
 
 void resolveAssignmentNode(astNode_t *node) {
@@ -292,6 +414,7 @@ void resolveASTtoLLVM(astNode_t *root) {
   }
 
   depth = 0;
+  GlobalSymTable = createHT(0);
   resolveToLLVM(root);
   if (file)
     fclose(file);

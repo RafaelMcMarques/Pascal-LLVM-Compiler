@@ -2,48 +2,66 @@
 #define DATA_STRUCTURES_H
 
 #include <stdlib.h>
-typedef struct HashNode {
+#include "AST_node_types.h"
+typedef struct hashNode_t {
   char *key;
   void *value;
-  struct HashNode *next;
-} HashNode;
+  struct hashNode_t *next;
+} hashNode_t;
 
 typedef struct {
-  HashNode **buckets;
+  hashNode_t **buckets;
   size_t size;
-} HashTable;
+} hashTable_t;
 
-typedef struct StackNode {
+typedef struct stackNode_t {
   void *data;
-  struct StackNode *next;
-} StackNode;
+  struct stackNode_t *next;
+} stackNode_t;
 
-typedef struct {
-  StackNode *top;
-} Stack;
+typedef struct stack_t{
+  stackNode_t *top;
+} stack_t;
+
+typedef struct parameter_t {
+  varType_e type;
+  int byReference;
+} parameter_t;
+
+typedef struct symbol_t {
+  char *srcName; // name in pascal
+  idType_e symbType;
+  varType_e returnType;
+
+  // only if var
+  int isPtr;
+
+  // only if function
+  int paramCount;
+  parameter_t params[100];
+} symbol_t;
 
 
-HashTable *ht_create(size_t size);
+hashTable_t *createHT(size_t size);
 
-int ht_insert(HashTable *ht, const char *key, void *value);
+int insertHT(hashTable_t *ht, const char *key, void *value);
 
-void *ht_get(HashTable *ht, const char *key);
+void *getFromHT(hashTable_t *ht, const char *key);
 
-int ht_remove(HashTable *ht, const char *key);
+int removeFromHT(hashTable_t *ht, const char *key);
 
-void ht_destroy(HashTable *ht);
+void destroyHT(hashTable_t *ht);
 
-Stack *createStack();
+stack_t* createStack();
 
-void push(Stack *s, void *data);
+void stackPush(stack_t *s, void *data);
 
-void *pop(Stack *s);
+void *stackPop(stack_t *s);
 
-void *peek(Stack *s);
+void *stackPeek(stack_t *s);
 
+int stackIsEmpty(stack_t *s);
 
-int isEmpty(Stack *s);
-
-void freeStack(Stack *s);
+void freeStack(stack_t *s);
 
 #endif
