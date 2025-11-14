@@ -98,6 +98,91 @@ void printSymbol(symbol_t *symb) {
   }
 }
 
+char *getLLVMOp(varType_e type, char *op) {
+  /* --- Aritméticos --- */
+  if (strcmp(op, "+") == 0)
+    return (type == INT_TYPE ? "add" : "fadd");
+
+  if (strcmp(op, "-") == 0)
+    return (type == INT_TYPE ? "sub" : "fsub");
+
+  if (strcmp(op, "*") == 0)
+    return (type == INT_TYPE ? "mul" : "fmul");
+
+  /* "/" = divisão real */
+  if (strcmp(op, "/") == 0)
+    return "fdiv";
+
+  /* "div" = divisão inteira */
+  if (strcmp(op, "div") == 0)
+    return "sdiv";
+
+  if (strcmp(op, "mod") == 0)
+    return "srem";
+
+  /* --- Booleanos --- */
+  if (strcmp(op, "and") == 0)
+    return "and";
+
+  if (strcmp(op, "or") == 0)
+    return "or";
+
+  /* --- Comparações --- */
+  if (strcmp(op, "=") == 0)
+    return (type == INT_TYPE ? "icmp eq" : "fcmp oeq");
+
+  if (strcmp(op, "<>") == 0)
+    return (type == INT_TYPE ? "icmp ne" : "fcmp one");
+
+  if (strcmp(op, ">") == 0)
+    return (type == INT_TYPE ? "icmp sgt" : "fcmp ogt");
+
+  if (strcmp(op, ">=") == 0)
+    return (type == INT_TYPE ? "icmp sge" : "fcmp oge");
+
+  if (strcmp(op, "<") == 0)
+    return (type == INT_TYPE ? "icmp slt" : "fcmp olt");
+
+  if (strcmp(op, "<=") == 0)
+    return (type == INT_TYPE ? "icmp sle" : "fcmp ole");
+}
+
+varType_e getResultType(varType_e left, varType_e right, const char *op) {
+
+  /* --- Operadores aritméticos básicos (+ - *) --- */
+  if (!strcmp(op, "+") || !strcmp(op, "-") || !strcmp(op, "*")) {
+    if (left == REAL_TYPE || right == REAL_TYPE)
+      return REAL_TYPE; // promoção automática
+
+    return INT_TYPE; // ambos inteiros
+  }
+
+  /* --- "/" sempre vira real --- */
+  if (!strcmp(op, "/")) {
+    return REAL_TYPE;
+  }
+
+  /* --- "div" e "mod" só funcionam com inteiros --- */
+  if (!strcmp(op, "div") || !strcmp(op, "mod")) {
+    if (left == INT_TYPE && right == INT_TYPE)
+      return INT_TYPE;
+
+    printf("Invalid div or mod for real type\n"); // div/mod em real é inválido
+    exit(1);
+  }
+
+  /* --- Booleanos ("and", "or") --- */
+  if (!strcmp(op, "and") || !strcmp(op, "or")) {
+    return INT_TYPE; // boolean em Pascal → representado como int
+  }
+
+  /* --- Comparações: sempre retornam boolean (int) --- */
+  if (!strcmp(op, "=") || !strcmp(op, "<>") || !strcmp(op, ">") ||
+      !strcmp(op, ">=") || !strcmp(op, "<") || !strcmp(op, "<=")) {
+    return INT_TYPE;
+  }
+}
+
 /* ====== LABEL HELPERS ====== */
 char *getNextReg() {
   int number = LocalSymTable == NULL ? nextGlobalReg++ : nextLocalReg++;
@@ -299,6 +384,7 @@ symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
   symb->srcName = headerNode->id->payload.id->id;
   symb->returnType = headerNode->returnType;
   symb->symbType = FUNCTION_ID;
+  symb->isPtr = 1;
   symb->isGlobal = 1;
 
   // params
@@ -359,6 +445,15 @@ void resolveSubprogramDefNode(astNode_t *node) {
 
   depth++;
   resolveToLLVM(subpNode->declarations);
+
+  // declare return value
+  char *name = subpNode->header->payload.subprogramHeader->id->payload.id->id;
+  varType_e type = subpNode->header->payload.subprogramHeader->returnType;
+  if (type != NO_TYPE) {
+    char *strType = getVarTypeLLVM(type);
+    myPrint("%%%s = alloca %s 0\n;", name, type);
+  }
+
   resolveToLLVM(subpNode->codeBlock);
   depth--;
 
@@ -455,9 +550,13 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
     exit(1);
   }
 
+  symbol_t *newSymb = malloc(sizeof(symbol_t));
+
   // function call
   if (symb->symbType == FUNCTION_ID) {
-    return resolveFunctionCallToLLVM(node);
+    if (!isScopeLocal()) {
+      return resolveFunctionCallToLLVM(node);
+    }
   }
 
   // no need to load
@@ -466,28 +565,91 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
   }
 
   // load to register
-  symbol_t *newSymb = malloc(sizeof(symbol_t));
 
   newSymb->srcName = getNextReg();
   newSymb->isGlobal = 0;
   newSymb->symbType = VARIABLE_ID;
+  newSymb->returnType = symb->returnType;
   newSymb->isPtr = 0;
 
   char *typeStr = getVarTypeLLVM(symb->returnType);
 
   if (symb->isGlobal) {
-    myPrint("%%%s = load %s, %s* @%s", newSymb->srcName, typeStr, typeStr,
+    myPrint("%%%s = load %s, %s* @%s\n", newSymb->srcName, typeStr, typeStr,
             symb->srcName);
   } else {
-    myPrint("%%%s = load %s, %s* %%%s", newSymb->srcName, typeStr, typeStr,
+    myPrint("%%%s = load %s, %s* %%%s\n", newSymb->srcName, typeStr, typeStr,
             symb->srcName);
   }
   return newSymb;
 }
 
+symbol_t *convertSymbToType(symbol_t *op, varType_e resultType) {
+  if (op->returnType == resultType)
+    return op;
+
+  symbol_t *newS = malloc(sizeof(symbol_t));
+
+  newS->srcName = getNextReg();
+  newS->isGlobal = 0;
+  newS->isPtr = 0;
+  newS->returnType = resultType;
+  newS->symbType = VARIABLE_ID;
+
+  // int to real
+  if (op->returnType == INT_TYPE) {
+    myPrint("%%%s = sitofp i32 %%%s to float\n", newS->srcName, op->srcName);
+  } else {
+    myPrint("%%%s = fptosi float %%%s to int\n", newS->srcName, op->srcName);
+  }
+
+  return newS;
+}
+
+symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
+  varType_e resultType;
+
+  printf("%s\n", op);
+  printSymbol(rOp);
+
+  char *llvmInstruction;
+  if (rOp)
+    resultType = getResultType(lOp->returnType, rOp->returnType, op);
+  else
+    resultType = lOp->returnType;
+
+  llvmInstruction = getLLVMOp(resultType, op);
+  printf("resolve op\n");
+
+  symbol_t *symb = malloc(sizeof(symbol_t));
+  symb->srcName = getNextReg();
+  symb->returnType = resultType;
+  symb->isGlobal = 0;
+  symb->isPtr = 0;
+  symb->symbType = VARIABLE_ID;
+
+  char *strType = getVarTypeLLVM(resultType);
+
+  lOp = convertSymbToType(lOp, resultType);
+
+  // a = -x
+  if (!rOp) {
+    myPrint("%%%s = %s %s 0, %%%s\n", symb->srcName, llvmInstruction, strType,
+            lOp->srcName);
+    return symb;
+  }
+
+  rOp = convertSymbToType(rOp, resultType);
+  myPrint("%%%s = %s %s %%%s, %%%s\n", symb->srcName, llvmInstruction, strType,
+          lOp->srcName, rOp->srcName);
+
+  return symb;
+}
+
 // forward declaration
 symbol_t *resolveExpressionNode(astNode_t *);
 
+// calls correct function to handle expression
 symbol_t *expressionResolutionWrapper(astNode_t *node) {
   if (!node)
     return NULL;
@@ -514,15 +676,14 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
 symbol_t *resolveExpressionNode(astNode_t *node) {
   expressionNode_t *expressionNode = node->payload.expression;
 
-  myPrint("EXPRESSION\n");
-
-  depth++;
   symbol_t *lOp = expressionResolutionWrapper(expressionNode->lOperand);
-  myPrint("op: %s\n", expressionNode->op);
   symbol_t *rOp = expressionResolutionWrapper(expressionNode->rOperand);
-  depth--;
 
-  return NULL;
+  if (strcmp(expressionNode->op, "leaf") == 0) {
+    return lOp;
+  }
+
+  return resolveOperationToLLVM(lOp, expressionNode->op, rOp);
 }
 
 void resolveLiteralNode(astNode_t *node) {
@@ -534,6 +695,8 @@ void resolveLiteralNode(astNode_t *node) {
   myPrint("literal: %s\n", literalNode->literal);
   depth--;
 }
+
+/* ======= START AND NODE WRAPPER =======*/
 
 void resolveToLLVM(astNode_t *node) {
   if (!node) {
