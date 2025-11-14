@@ -17,9 +17,11 @@ hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
 // to be used in function
 unsigned int nextLocalReg = 0;
+unsigned int nextLocalLabel = 0;
 
 // to be used in main
 unsigned int nextGlobalReg = 0;
+unsigned int nextGlobalLabel = 0;
 
 void resolveToLLVM(astNode_t *node);
 
@@ -145,6 +147,8 @@ char *getLLVMOp(varType_e type, char *op) {
 
   if (strcmp(op, "<=") == 0)
     return (type == INT_TYPE ? "icmp sle" : "fcmp ole");
+
+  return "?";
 }
 
 varType_e getResultType(varType_e left, varType_e right, const char *op) {
@@ -189,6 +193,17 @@ varType_e getResultType(varType_e left, varType_e right, const char *op) {
 /* ====== LABEL HELPERS ====== */
 char *getNextReg() {
   int number = LocalSymTable == NULL ? nextGlobalReg++ : nextLocalReg++;
+
+  char temp[32];
+  int len = snprintf(temp, sizeof(temp), "%d", number);
+
+  char *result = malloc(len + 1);
+  strcpy(result, temp);
+  return result;
+}
+
+char *getNextLabel() {
+  int number = LocalSymTable == NULL ? nextGlobalLabel++ : nextLocalLabel++;
 
   char temp[32];
   int len = snprintf(temp, sizeof(temp), "%d", number);
@@ -483,7 +498,7 @@ void resolveAssignmentNode(astNode_t *node) {
 
   symbol_t *exp = resolveExpressionNode(asNode->exp);
   if (!exp) {
-    printf("Ainda nao implementei essa exp\n");
+    myPrint("Nao posso assign a exp nao avalida\n");
     return;
   }
 
@@ -521,9 +536,24 @@ void resolveIfNode(astNode_t *node) {
   myPrint("IF STATEMENT\n");
 
   depth++;
-  resolveToLLVM(ifNode->condition);
+  // br i1 %cond, label %thenBlock, label %endIf
+
+  symbol_t *exp = resolveExpressionNode(ifNode->condition);
+
+  char *ifLabelID = getNextLabel();
+  char *elseLabelID = getNextLabel();
+  char *endifLabelID = getNextLabel();
+  myPrint("br i1 %%%s, label %%if%s, label %%else%s\n", exp->srcName, ifLabelID,
+          elseLabelID);
+
+  myPrint("if%s: \n", ifLabelID);
   resolveToLLVM(ifNode->thenBlock);
+  myPrint("br label %%endif%s\n", endifLabelID);
+
+  myPrint("else%s: \n", elseLabelID);
   resolveToLLVM(ifNode->elseBlock);
+
+  myPrint("endif%s: \n", endifLabelID);
   depth--;
 }
 
@@ -564,7 +594,10 @@ symbol_t *resolveLiteralToLLVM(astNode_t *node) {
 }
 
 // can be called with id node or functionCallNode
-symbol_t *resolveFunctionCallToLLVM(astNode_t *node) { return NULL; }
+symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
+  myPrint("Ainda nao implementei func calls em exps\n");
+  return NULL;
+}
 
 // loads variable into register or calls function and stores return value in
 // register
@@ -683,13 +716,14 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
     return resolveIdToLLVM(node);
     break;
   case FUNCTION_CALL_NODE:
-    resolveFunctionCallNode(node);
+    resolveFunctionCallToLLVM(node);
     return NULL;
     break;
   case LITERAL_NODE:
     return resolveLiteralToLLVM(node);
     break;
   default:
+    printf("Ainda nao implementei essa exp\n");
     return NULL;
     break;
   }
@@ -739,9 +773,6 @@ void resolveToLLVM(astNode_t *node) {
     break;
   case ASSIGNMENT_NODE:
     resolveAssignmentNode(node);
-    break;
-  case FUNCTION_CALL_NODE:
-    resolveFunctionCallNode(node);
     break;
   case IF_NODE:
     resolveIfNode(node);
