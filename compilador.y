@@ -306,19 +306,19 @@ FATOR {
 FATOR: 
 ID {
   astNode_t* idNode = createIdNode2($1, UNKNOWN);
-  $$ = idNode;
+  $$ = createExpressionNode("leaf", idNode, NULL);
 }
 | ID ABRE_PARENTESES LISTA_DE_EXPRESSOES FECHA_PARENTESES {
   astNode_t *idNode = createIdNode2($1, FUNCTION_ID);
   astNode_t *callNode = createFunctionCallNode(idNode, 1, $3);
-  $$ = callNode;
+  $$ = createExpressionNode("leaf", callNode, NULL);
 }
 | NUM {
   astNode_t *literalNode = createLiteralNode($1);
-  $$ = literalNode;
+  $$ = createExpressionNode("leaf", literalNode, NULL);
 }
 | ABRE_PARENTESES EXPRESSAO FECHA_PARENTESES {
-  $$ = $2;
+  $$ = createExpressionNode("leaf", $2, NULL);
 } 
 ;
 

@@ -30,6 +30,7 @@ typedef struct parameter_t {
 
 typedef struct symbol_t {
   char *srcName; // name in pascal
+  int isGlobal;
   idType_e symbType;
   varType_e returnType;
 

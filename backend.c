@@ -15,6 +15,12 @@ static FILE *file = NULL;
 
 hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
+// to be used in function
+unsigned int nextLocalReg = 0;
+
+// to be used in main
+unsigned int nextGlobalReg = 0;
+
 void resolveToLLVM(astNode_t *node);
 
 /* ======= PRINT HELPERS =======*/
@@ -90,6 +96,18 @@ void printSymbol(symbol_t *symb) {
     }
     printf("\n");
   }
+}
+
+/* ====== LABEL HELPERS ====== */
+char *getNextReg() {
+  int number = LocalSymTable == NULL ? nextGlobalReg++ : nextLocalReg++;
+
+  char temp[32];
+  int len = snprintf(temp, sizeof(temp), "%d", number);
+
+  char *result = malloc(len + 1);
+  strcpy(result, temp);
+  return result;
 }
 
 /* ===== TAB SYMB HELPERS ====== */
@@ -190,7 +208,8 @@ void declareVariableLLVM(symbol_t *symb) {
   }
 }
 
-// add vars to symTab and generate llvm for declaration
+// add vars to symTab and call declareVariableLLVM
+// this is wrapped by printListNode
 void resolveVarsDefNode(astNode_t *node) {
   varsDefinitionNode_t *varsDefNode = node->payload.varsDefinition;
 
@@ -204,6 +223,7 @@ void resolveVarsDefNode(astNode_t *node) {
 
     symb->srcName = strdup(idNode->id);
     symb->returnType = varsDefNode->varsType;
+    symb->isGlobal = !isScopeLocal();
     symb->symbType = VARIABLE_ID;
     symb->isPtr = 1;
 
@@ -225,7 +245,6 @@ void resolveParameterDefNode(astNode_t *node) {
 
   listNode_t *idList = paramDefNode->idsList->payload.list;
 
-  depth++;
   char *separator = "";
   for (int i = 0; i < idList->childrenCount; i++) {
     idNode_t *idNode = idList->children[i]->payload.id;
@@ -236,6 +255,7 @@ void resolveParameterDefNode(astNode_t *node) {
     symb->symbType = VARIABLE_ID;
     symb->returnType = type;
     symb->isPtr = byRef;
+    symb->isGlobal = 0;
     insertSymbolCurrScope(symb);
 
     if (byRef) {
@@ -245,19 +265,16 @@ void resolveParameterDefNode(astNode_t *node) {
     }
     separator = ", ";
   }
-  depth--;
 }
 
 // register params in SymTab and generate LLVM
 void resolveHeaderParamsList(listNode_t *paramsList) {
   char *separator = "";
-  myPrintSL("(");
   for (int i = 0; i < paramsList->childrenCount; i++) {
     myPrintSL("%s", separator);
     resolveParameterDefNode(paramsList->children[i]);
     separator = ", ";
   }
-  myPrintSL(")\n");
 }
 
 // returns symbol for a function (name, type, params...)
@@ -266,6 +283,7 @@ symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
   symb->srcName = headerNode->id->payload.id->id;
   symb->returnType = headerNode->returnType;
   symb->symbType = FUNCTION_ID;
+  symb->isGlobal = 1;
 
   // params
   listNode_t *paramsList = headerNode->params->payload.list;
@@ -297,7 +315,6 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
   subprogramHeaderNode_t *headerNode = node->payload.subprogramHeader;
 
   myPrint("SUBPROGRAM HEADER\n");
-  depth++;
 
   // insert into symtable
   symbol_t *symb = getFunctionSymbol(headerNode);
@@ -308,9 +325,9 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
   myPrint("define %s @%s", type, symb->srcName);
 
   // declar params in LLVM and add them to local symTable
+  myPrintSL("(");
   resolveHeaderParamsList(headerNode->params->payload.list);
-
-  depth--;
+  myPrintSL(") ");
 }
 
 void resolveSubprogramDefNode(astNode_t *node) {
@@ -319,12 +336,17 @@ void resolveSubprogramDefNode(astNode_t *node) {
   myPrint("SUBPROGRAM DECLARATION\n");
 
   LocalSymTable = createHT(0);
+  nextLocalReg = 0;
+
+  resolveToLLVM(subpNode->header);
+  myPrintSL("{\n");
 
   depth++;
-  resolveToLLVM(subpNode->header);
   resolveToLLVM(subpNode->declarations);
   resolveToLLVM(subpNode->codeBlock);
   depth--;
+
+  myPrint("}\n");
 
   destroyHT(LocalSymTable);
 }
@@ -379,16 +401,68 @@ void resolveWhileNode(astNode_t *node) {
   depth--;
 }
 
-void resolveExpressionNode(astNode_t *node) {
+/* ====== EXPRESSIONS =====*/
+
+symbol_t *resolveLiteralToLLVM(astNode_t *node) {
+  symbol_t *symb = malloc(sizeof(symbol_t));
+  char *literal = node->payload.literal->literal;
+
+  symb->srcName = getNextReg();
+  symb->isGlobal = 0;
+  symb->symbType = VARIABLE_ID;
+  symb->isPtr = 0;
+
+  // get type
+  symb->returnType = INT_TYPE;
+  for (const char *p = literal; *p; p++) {
+    if (*p == '.' || *p == 'e' || *p == 'E')
+      symb->returnType = REAL_TYPE;
+  }
+
+  char *type = getVarTypeLLVM(symb->returnType);
+  myPrint("%%%s = add %s %s, 0\n", symb->srcName, type, literal);
+
+  return symb;
+}
+
+// forward declaration
+symbol_t *resolveExpressionNode(astNode_t *);
+
+symbol_t *expressionResolutionWrapper(astNode_t *node) {
+  if (!node)
+    return NULL;
+  switch (node->nodeType) {
+  case EXPRESSION_NODE:
+    return resolveExpressionNode(node);
+    break;
+  case ID_NODE:
+    return NULL;
+    break;
+  case FUNCTION_CALL_NODE:
+    resolveFunctionCallNode(node);
+    return NULL;
+    break;
+  case LITERAL_NODE:
+    return resolveLiteralToLLVM(node);
+    break;
+  default:
+    return NULL;
+    break;
+  }
+}
+
+symbol_t *resolveExpressionNode(astNode_t *node) {
   expressionNode_t *expressionNode = node->payload.expression;
 
   myPrint("EXPRESSION\n");
 
   depth++;
-  resolveToLLVM(expressionNode->lOperand);
+  symbol_t *lOp = expressionResolutionWrapper(expressionNode->lOperand);
   myPrint("op: %s\n", expressionNode->op);
-  resolveToLLVM(expressionNode->rOperand);
+  symbol_t *rOp = expressionResolutionWrapper(expressionNode->rOperand);
   depth--;
+
+  return NULL;
 }
 
 void resolveLiteralNode(astNode_t *node) {
