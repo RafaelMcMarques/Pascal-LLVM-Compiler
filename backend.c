@@ -138,6 +138,22 @@ void insertSymbolCurrScope(symbol_t *symb) {
   }
 }
 
+symbol_t *getSymbol(char *id) {
+  symbol_t *symb = NULL;
+
+  if (isScopeLocal()) {
+    printf("local\n");
+    symb = (symbol_t *)getFromHT(LocalSymTable, id);
+  }
+
+  if (!symb) {
+    printf("global\n");
+    symb = (symbol_t *)getFromHT(GlobalSymTable, id);
+  }
+
+  return symb;
+}
+
 /* ======= LIST ITERATOR =======*/
 
 void resolveListNode(astNode_t *node) {
@@ -349,6 +365,7 @@ void resolveSubprogramDefNode(astNode_t *node) {
   myPrint("}\n");
 
   destroyHT(LocalSymTable);
+  LocalSymTable = NULL;
 }
 
 void resolveAssignmentNode(astNode_t *node) {
@@ -425,6 +442,49 @@ symbol_t *resolveLiteralToLLVM(astNode_t *node) {
   return symb;
 }
 
+// can be called with id node or functionCallNode
+symbol_t *resolveFunctionCallToLLVM(astNode_t *node) { return NULL; }
+
+symbol_t *resolveIdToLLVM(astNode_t *node) {
+  char *id = node->payload.id->id;
+
+  symbol_t *symb = getSymbol(id);
+
+  if (!symb) {
+    printf("Error: id %s not defined\n", id);
+    exit(1);
+  }
+
+  // function call
+  if (symb->symbType == FUNCTION_ID) {
+    return resolveFunctionCallToLLVM(node);
+  }
+
+  // no need to load
+  if (!symb->isPtr) {
+    return symb;
+  }
+
+  // load to register
+  symbol_t *newSymb = malloc(sizeof(symbol_t));
+
+  newSymb->srcName = getNextReg();
+  newSymb->isGlobal = 0;
+  newSymb->symbType = VARIABLE_ID;
+  newSymb->isPtr = 0;
+
+  char *typeStr = getVarTypeLLVM(symb->returnType);
+
+  if (symb->isGlobal) {
+    myPrint("%%%s = load %s, %s* @%s", newSymb->srcName, typeStr, typeStr,
+            symb->srcName);
+  } else {
+    myPrint("%%%s = load %s, %s* %%%s", newSymb->srcName, typeStr, typeStr,
+            symb->srcName);
+  }
+  return newSymb;
+}
+
 // forward declaration
 symbol_t *resolveExpressionNode(astNode_t *);
 
@@ -436,7 +496,7 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
     return resolveExpressionNode(node);
     break;
   case ID_NODE:
-    return NULL;
+    return resolveIdToLLVM(node);
     break;
   case FUNCTION_CALL_NODE:
     resolveFunctionCallNode(node);
