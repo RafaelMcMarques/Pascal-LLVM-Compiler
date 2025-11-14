@@ -181,6 +181,9 @@ varType_e getResultType(varType_e left, varType_e right, const char *op) {
       !strcmp(op, ">=") || !strcmp(op, "<") || !strcmp(op, "<=")) {
     return INT_TYPE;
   }
+
+  printf("INVALID OPERATION\n");
+  exit(1);
 }
 
 /* ====== LABEL HELPERS ====== */
@@ -234,6 +237,12 @@ symbol_t *getSymbol(char *id) {
   if (!symb) {
     printf("global\n");
     symb = (symbol_t *)getFromHT(GlobalSymTable, id);
+  }
+
+  if (!symb) {
+    printf("Undefined reference to %s\n", id);
+    exit(1);
+    return NULL; // wont reach
   }
 
   return symb;
@@ -355,7 +364,7 @@ void resolveParameterDefNode(astNode_t *node) {
     symb->srcName = idNode->id;
     symb->symbType = VARIABLE_ID;
     symb->returnType = type;
-    symb->isPtr = byRef;
+    symb->isPtr = 1;
     symb->isGlobal = 0;
     insertSymbolCurrScope(symb);
 
@@ -423,7 +432,7 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
   insertSymbolGlobalScope(symb);
 
   // declare in LLVM
-  char *type = getVarTypeLLVM(headerNode->returnType);
+  char *type = getVarTypeLLVM(symb->returnType);
   myPrint("define %s @%s", type, symb->srcName);
 
   // declar params in LLVM and add them to local symTable
@@ -432,6 +441,7 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
   myPrintSL(") ");
 }
 
+// resolve a function to llvm
 void resolveSubprogramDefNode(astNode_t *node) {
   subprogramDefNode_t *subpNode = node->payload.subprogramDef;
 
@@ -451,7 +461,7 @@ void resolveSubprogramDefNode(astNode_t *node) {
   varType_e type = subpNode->header->payload.subprogramHeader->returnType;
   if (type != NO_TYPE) {
     char *strType = getVarTypeLLVM(type);
-    myPrint("%%%s = alloca %s 0\n;", name, type);
+    myPrint("%%%s = alloca %s 0;\n", name, strType);
   }
 
   resolveToLLVM(subpNode->codeBlock);
@@ -463,31 +473,46 @@ void resolveSubprogramDefNode(astNode_t *node) {
   LocalSymTable = NULL;
 }
 
+/* ======= STATEMENTS =======*/
+
+// forward declaration
+symbol_t *resolveExpressionNode(astNode_t *);
+
 void resolveAssignmentNode(astNode_t *node) {
   assignmentNode_t *asNode = node->payload.assignment;
 
-  myPrint("ASSIGNMENT\n");
-
-  depth++;
-  resolveToLLVM(asNode->variable);
-  resolveToLLVM(asNode->exp);
-  depth--;
-}
-
-void resolveFunctionCallNode(astNode_t *node) {
-  functionCallNode_t *fNode = node->payload.functionCall;
-
-  myPrint("FUNCTION CALL\n");
-
-  depth++;
-  resolveToLLVM(fNode->id);
-
-  if (fNode->hasArguments) {
-    resolveToLLVM(fNode->arguments);
-  } else {
-    myPrint("arguments: no\n");
+  symbol_t *exp = resolveExpressionNode(asNode->exp);
+  if (!exp) {
+    printf("Ainda nao implementei essa exp\n");
+    return;
   }
-  depth--;
+
+  symbol_t *var = getSymbol(asNode->variable->payload.id->id);
+
+  if (!isScopeLocal() && var->symbType == FUNCTION_ID) {
+    printf("ERROR: cannot assign value to symbol %s\n", var->srcName);
+    exit(1);
+  }
+  if (!var->isPtr) {
+    printf("ERROR: cannot assign value to non-pointer symbol %s\n",
+           var->srcName);
+    exit(1);
+  }
+
+  char *typeStrE = getVarTypeLLVM(exp->returnType);
+  char *typeStrV = getVarTypeLLVM(var->returnType);
+  if (exp->returnType != var->returnType) {
+    printf("ERROR: cannot assign %s to %s\n", typeStrE, typeStrV);
+    exit(1);
+  }
+
+  if (var->isGlobal) {
+    myPrint("store %s %%%s, %s* @%s\n", typeStrE, exp->srcName, typeStrV,
+            var->srcName);
+  } else {
+    myPrint("store %s %%%s, %s* %%%s\n", typeStrE, exp->srcName, typeStrV,
+            var->srcName);
+  }
 }
 
 void resolveIfNode(astNode_t *node) {
@@ -515,6 +540,7 @@ void resolveWhileNode(astNode_t *node) {
 
 /* ====== EXPRESSIONS =====*/
 
+// puts a literal into a register
 symbol_t *resolveLiteralToLLVM(astNode_t *node) {
   symbol_t *symb = malloc(sizeof(symbol_t));
   char *literal = node->payload.literal->literal;
@@ -540,23 +566,21 @@ symbol_t *resolveLiteralToLLVM(astNode_t *node) {
 // can be called with id node or functionCallNode
 symbol_t *resolveFunctionCallToLLVM(astNode_t *node) { return NULL; }
 
+// loads variable into register or calls function and stores return value in
+// register
 symbol_t *resolveIdToLLVM(astNode_t *node) {
   char *id = node->payload.id->id;
 
   symbol_t *symb = getSymbol(id);
-
-  if (!symb) {
-    printf("Error: id %s not defined\n", id);
-    exit(1);
-  }
 
   symbol_t *newSymb = malloc(sizeof(symbol_t));
 
   // function call
   if (symb->symbType == FUNCTION_ID) {
     if (!isScopeLocal()) {
+      // this is a function call without params
       return resolveFunctionCallToLLVM(node);
-    }
+    } // else it is referencing the return value
   }
 
   // no need to load
@@ -565,7 +589,6 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
   }
 
   // load to register
-
   newSymb->srcName = getNextReg();
   newSymb->isGlobal = 0;
   newSymb->symbType = VARIABLE_ID;
@@ -584,6 +607,7 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
   return newSymb;
 }
 
+// converts the type of a value in a register to match resultType
 symbol_t *convertSymbToType(symbol_t *op, varType_e resultType) {
   if (op->returnType == resultType)
     return op;
@@ -606,6 +630,7 @@ symbol_t *convertSymbToType(symbol_t *op, varType_e resultType) {
   return newS;
 }
 
+// generates code for operations
 symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
   varType_e resultType;
 
@@ -646,9 +671,6 @@ symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
   return symb;
 }
 
-// forward declaration
-symbol_t *resolveExpressionNode(astNode_t *);
-
 // calls correct function to handle expression
 symbol_t *expressionResolutionWrapper(astNode_t *node) {
   if (!node)
@@ -673,6 +695,7 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
   }
 }
 
+// resolves an expression
 symbol_t *resolveExpressionNode(astNode_t *node) {
   expressionNode_t *expressionNode = node->payload.expression;
 
@@ -684,16 +707,6 @@ symbol_t *resolveExpressionNode(astNode_t *node) {
   }
 
   return resolveOperationToLLVM(lOp, expressionNode->op, rOp);
-}
-
-void resolveLiteralNode(astNode_t *node) {
-  literalNode_t *literalNode = node->payload.literal;
-
-  myPrint("LITERAL\n");
-
-  depth++;
-  myPrint("literal: %s\n", literalNode->literal);
-  depth--;
 }
 
 /* ======= START AND NODE WRAPPER =======*/
@@ -740,7 +753,7 @@ void resolveToLLVM(astNode_t *node) {
     resolveExpressionNode(node);
     break;
   case LITERAL_NODE:
-    resolveLiteralNode(node);
+    resolveLiteralToLLVM(node);
     break;
   default:
     myPrint("UNKNOWN NODE\n");
