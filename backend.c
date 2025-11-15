@@ -15,7 +15,7 @@ static FILE *file = NULL;
 
 hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
-// to be used in function
+// to be used in functions
 unsigned int nextLocalReg = 0;
 unsigned int nextLocalLabel = 0;
 
@@ -411,9 +411,14 @@ symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
   symb->isPtr = 1;
   symb->isGlobal = 1;
 
-  // params
-  listNode_t *paramsList = headerNode->params->payload.list;
+  if (!headerNode->params) {
+    symb->paramCount = 0;
+    return symb;
+  }
+
+  // register params
   int paramCount = 0;
+  listNode_t *paramsList = headerNode->params->payload.list;
   for (int i = 0; i < paramsList->childrenCount; i++) {
     paramDefNode_t *paramDefNode =
         paramsList->children[i]->payload.paramDefNode;
@@ -452,7 +457,9 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
 
   // declar params in LLVM and add them to local symTable
   myPrintSL("(");
-  resolveHeaderParamsList(headerNode->params->payload.list);
+  if (headerNode->params) {
+    resolveHeaderParamsList(headerNode->params->payload.list);
+  }
   myPrintSL(") ");
 }
 
@@ -497,13 +504,12 @@ void resolveAssignmentNode(astNode_t *node) {
   assignmentNode_t *asNode = node->payload.assignment;
 
   symbol_t *exp = resolveExpressionNode(asNode->exp);
-  if (!exp) {
-    myPrint("Nao posso assign a exp nao avalida\n");
-    return;
-  }
-
   symbol_t *var = getSymbol(asNode->variable->payload.id->id);
 
+  if (!exp) {
+    myPrint("ERROR: could not assign %s no null expression\n", var->srcName);
+    exit(1);
+  }
   if (!isScopeLocal() && var->symbType == FUNCTION_ID) {
     printf("ERROR: cannot assign value to symbol %s\n", var->srcName);
     exit(1);
@@ -536,7 +542,6 @@ void resolveIfNode(astNode_t *node) {
   myPrint("IF STATEMENT\n");
 
   depth++;
-  // br i1 %cond, label %thenBlock, label %endIf
 
   symbol_t *exp = resolveExpressionNode(ifNode->condition);
 
@@ -593,10 +598,129 @@ symbol_t *resolveLiteralToLLVM(astNode_t *node) {
   return symb;
 }
 
+symbol_t *getReferenceArgSymb(expressionNode_t *argNode, parameter_t *param) {
+  // arg tem que ser var
+  if (strcmp(argNode->op, "leaf") || (argNode->lOperand->nodeType != ID_NODE))
+    return NULL;
+
+  idNode_t *idNode = argNode->lOperand->payload.id;
+  symbol_t *argSymb = getSymbol(idNode->id);
+
+  if ((argSymb->symbType != VARIABLE_ID) || !argSymb->isPtr ||
+      (argSymb->returnType != param->type)) {
+    return NULL; // unreachable
+  }
+
+  return argSymb;
+}
+
+// use when function in pascal is called with only its id
+symbol_t *resolveParamlessFuncCall(idNode_t *idNode) {
+  symbol_t *funcSym = getSymbol(idNode->id);
+  char *functionName = funcSym->srcName;
+
+  if (funcSym->paramCount) {
+    printf("ERROR: cannot call function %s with no params\n", functionName);
+    exit(1);
+    return NULL;
+  }
+
+  // generate LLVM
+  symbol_t *returnSymb = NULL;
+  if (funcSym->returnType != NO_TYPE) {
+    returnSymb = malloc(sizeof(symbol_t));
+
+    returnSymb->srcName = getNextReg();
+    returnSymb->isGlobal = 0;
+    returnSymb->symbType = VARIABLE_ID;
+    returnSymb->returnType = funcSym->returnType;
+    returnSymb->isPtr = 0;
+
+    myPrint("%%%s = call %s @%s()\n", returnSymb->srcName,
+            getVarTypeLLVM(returnSymb->returnType), functionName);
+  } else {
+    myPrint("call void @%s()\n", functionName);
+  }
+
+  return returnSymb;
+}
+
 // can be called with id node or functionCallNode
 symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
-  myPrint("Ainda nao implementei func calls em exps\n");
-  return NULL;
+  if (node->nodeType == ID_NODE) {
+    return resolveParamlessFuncCall(node->payload.id);
+  }
+
+  functionCallNode_t *callNode = node->payload.functionCall;
+  listNode_t *argList =
+      callNode->hasArguments ? callNode->arguments->payload.list : NULL;
+
+  int argumentCount = callNode->hasArguments ? argList->childrenCount : 0;
+
+  char *functionName = callNode->id->payload.id->id;
+  symbol_t *funcSym = getSymbol(functionName);
+
+  if (argumentCount != funcSym->paramCount) {
+    printf("ERROR: wrong number of arguments for function %s\n", functionName);
+    exit(1);
+    return NULL; // unreachable
+  }
+
+  symbol_t *argSymbols[argumentCount];
+
+  // check arguments
+  for (int i = 0; i < argumentCount; i++) {
+    parameter_t *param = funcSym->params[i];
+    expressionNode_t *argNode = argList->children[i]->payload.expression;
+
+    if (param->byReference) {
+      argSymbols[i] = getReferenceArgSymb(argNode, param);
+      continue;
+    }
+
+    argSymbols[i] = resolveExpressionNode(argList->children[i]);
+    if (argSymbols[i]->returnType != param->type) {
+      argSymbols[i] = NULL;
+    }
+  }
+
+  // generate LLVM
+  symbol_t *returnSymb = NULL;
+  if (funcSym->returnType != NO_TYPE) {
+    returnSymb = malloc(sizeof(symbol_t));
+
+    returnSymb->srcName = getNextReg();
+    returnSymb->isGlobal = 0;
+    returnSymb->symbType = VARIABLE_ID;
+    returnSymb->returnType = funcSym->returnType;
+    returnSymb->isPtr = 0;
+
+    myPrint("%%%s = call %s @%s", returnSymb->srcName,
+            getVarTypeLLVM(returnSymb->returnType), functionName);
+  } else {
+    myPrint("call void @%s", functionName);
+  }
+
+  // print arguments
+  myPrintSL("(");
+  char *separator = "";
+  for (int i = 0; i < argumentCount; i++) {
+    if (!argSymbols[i]) {
+      printf("ERROR: wrong type for argument %d for function %s\n", i + 1,
+             functionName);
+      exit(1);
+      return NULL; // unreachable
+    }
+    char *ptrStr = argSymbols[i]->isPtr ? "*" : "";
+    char *scopeStr = argSymbols[i]->isGlobal ? "@" : "%";
+    char *typeStr = getVarTypeLLVM(argSymbols[i]->returnType);
+    myPrintSL("%s%s%s %s%s", separator, typeStr, ptrStr, scopeStr,
+              argSymbols[i]->srcName);
+    separator = ", ";
+  }
+  myPrintSL(");\n");
+
+  return returnSymb;
 }
 
 // loads variable into register or calls function and stores return value in
@@ -716,8 +840,7 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
     return resolveIdToLLVM(node);
     break;
   case FUNCTION_CALL_NODE:
-    resolveFunctionCallToLLVM(node);
-    return NULL;
+    return resolveFunctionCallToLLVM(node);
     break;
   case LITERAL_NODE:
     return resolveLiteralToLLVM(node);
@@ -785,6 +908,9 @@ void resolveToLLVM(astNode_t *node) {
     break;
   case LITERAL_NODE:
     resolveLiteralToLLVM(node);
+    break;
+  case FUNCTION_CALL_NODE:
+    resolveFunctionCallToLLVM(node);
     break;
   default:
     myPrint("UNKNOWN NODE\n");
