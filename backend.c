@@ -567,9 +567,23 @@ void resolveWhileNode(astNode_t *node) {
 
   myPrint("WHILE STATEMENT\n");
 
+  char *condLabelID = getNextLabel();
+  char *bodyLabelID = getNextLabel();
+  char *exitLabelID = getNextLabel();
+
   depth++;
-  resolveToLLVM(whileNode->condition);
+
+  myPrint("cond%s:\n", condLabelID);
+  symbol_t *exp = resolveExpressionNode(whileNode->condition);
+
+  myPrint("br i1 %%%s, label %%body%s, label %%exit%s\n", exp->srcName,
+          bodyLabelID, exitLabelID);
+
+  myPrint("body%s:\n", bodyLabelID);
   resolveToLLVM(whileNode->codeBlock);
+  myPrint("br label %%cond%s\n", condLabelID);
+
+  myPrint("exit%s:\n", exitLabelID);
   depth--;
 }
 
