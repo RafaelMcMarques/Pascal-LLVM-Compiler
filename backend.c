@@ -17,12 +17,12 @@ static FILE *file = NULL;
 hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
 // to be used in functions
-unsigned int nextLocalReg = 0;
-unsigned int nextLocalLabel = 0;
+unsigned int nextLocalReg = 1;
+unsigned int nextLocalLabel = 1;
 
 // to be used in main
-unsigned int nextGlobalReg = 0;
-unsigned int nextGlobalLabel = 0;
+unsigned int nextGlobalReg = 1;
+unsigned int nextGlobalLabel = 1;
 
 void resolveToLLVM(astNode_t *node);
 
@@ -318,7 +318,7 @@ void declareIOFunctionsLLVM() {
           "align 1\n");
   myPrint("@write_float = private unnamed_addr constant [4 x i8] "
           "c\"%%f\\0A\\00\", align 1\n");
-  myPrint("\n");
+  myPrintSL("\n");
 }
 
 /* ===== PROGRAM NODE ===== */
@@ -331,13 +331,15 @@ void resolveProgramNode(astNode_t *node) {
 
   myPrint("; global variable declarations\n");
   resolveToLLVM(programNode->varDeclarationList);
-  myPrint("\n");
+  myPrintSL("\n");
   resolveToLLVM(programNode->subprogramDeclarationList);
-  myPrint("\n");
+  myPrintSL("\n");
 
   myPrint("define i32 @main() {\n");
   depth++;
+  myPrintSL("entry:\n");
   resolveToLLVM(programNode->mainCodeBlock);
+  myPrint("ret i32 0\n");
   depth--;
   myPrint("}\n");
 }
@@ -351,7 +353,7 @@ void declareVariableLLVM(symbol_t *symb) {
   if (isScopeLocal()) {
     myPrint("%%%s = alloca %s\n", name, type);
   } else {
-    myPrint("@%s = global %s\n", name, type);
+    myPrint("@%s = global %s 0\n", name, type);
   }
 }
 
@@ -397,7 +399,7 @@ void resolveParameterDefNode(astNode_t *node) {
     symb->srcName = idNode->id;
     symb->symbType = VARIABLE_ID;
     symb->returnType = type;
-    symb->isPtr = 1;
+    symb->isPtr = byRef;
     symb->isGlobal = 0;
     insertSymbolCurrScope(symb);
 
@@ -426,7 +428,7 @@ symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
   symb->srcName = headerNode->id->payload.id->id;
   symb->returnType = headerNode->returnType;
   symb->symbType = FUNCTION_ID;
-  symb->isPtr = 1;
+  symb->isPtr = 0;
   symb->isGlobal = 1;
 
   if (!headerNode->params) {
@@ -486,12 +488,13 @@ void resolveSubprogramDefNode(astNode_t *node) {
   subprogramDefNode_t *subpNode = node->payload.subprogramDef;
 
   LocalSymTable = createHT(0);
-  nextLocalReg = 0;
+  nextLocalReg = 1;
 
   resolveToLLVM(subpNode->header);
 
   depth++;
   myPrintSL("{\n");
+  myPrintSL("entry:\n");
 
   myPrint("; local variables\n");
   resolveToLLVM(subpNode->declarations);
@@ -500,8 +503,16 @@ void resolveSubprogramDefNode(astNode_t *node) {
   char *name = subpNode->header->payload.subprogramHeader->id->payload.id->id;
   varType_e type = subpNode->header->payload.subprogramHeader->returnType;
   if (type != NO_TYPE) {
+    symbol_t *returnSymb = malloc(sizeof(symbol_t));
+    returnSymb->srcName = name;
+    returnSymb->symbType = VARIABLE_ID;
+    returnSymb->isPtr = 1;
+    returnSymb->returnType = type;
+    returnSymb->isGlobal = 0;
+    insertSymbolCurrScope(returnSymb);
+
     char *strType = getVarTypeLLVM(type);
-    myPrint("%%%s = alloca %s 0\n", name, strType);
+    myPrint("%%%s = alloca %s\n", name, strType);
   }
 
   // statements
@@ -510,7 +521,11 @@ void resolveSubprogramDefNode(astNode_t *node) {
   // return
   if (type != NO_TYPE) {
     char *strType = getVarTypeLLVM(type);
-    myPrint("return %s %s\n", strType, name);
+    char *reg = getNextReg();
+    myPrint("%%%s = load %s, %s* %%%s\n", reg, strType, strType, name);
+    myPrint("ret %s %%%s\n", strType, reg);
+  } else {
+    myPrint("ret void\n");
   }
 
   depth--;
@@ -529,7 +544,7 @@ void resolveAssignmentNode(astNode_t *node) {
   assignmentNode_t *asNode = node->payload.assignment;
 
   symbol_t *var = getSymbol(asNode->variable->payload.id->id);
-  myPrint("\n");
+  myPrintSL("\n");
   myPrint("; Assignment (%s :=  exp)\n", var->srcName);
 
   symbol_t *exp = resolveExpressionNode(asNode->exp);
@@ -568,7 +583,7 @@ void resolveIfNode(astNode_t *node) {
   depth++;
   ifNode_t *ifNode = node->payload.ifNode;
 
-  myPrint("\n");
+  myPrintSL("\n");
   myPrint("; if statement\n");
   symbol_t *exp = resolveExpressionNode(ifNode->condition);
 
@@ -578,16 +593,17 @@ void resolveIfNode(astNode_t *node) {
   myPrint("br i1 %%%s, label %%then%s, label %%else%s\n\n", exp->srcName,
           ifLabelID, elseLabelID);
 
-  myPrintSL("then%s: \n", ifLabelID);
+  myPrintSL("then%s:\n", ifLabelID);
   resolveToLLVM(ifNode->thenBlock);
-  myPrint("\n");
+  myPrintSL("\n");
   myPrint("br label %%endif%s\n\n", endifLabelID);
 
-  myPrintSL("else%s: \n", elseLabelID);
+  myPrintSL("else%s:\n", elseLabelID);
   resolveToLLVM(ifNode->elseBlock);
-  myPrint("\n");
+  myPrint("br label %%endif%s\n\n", endifLabelID);
+  myPrintSL("\n");
 
-  myPrintSL("endif%s: \n", endifLabelID);
+  myPrintSL("endif%s:\n", endifLabelID);
 
   depth--;
 }
@@ -600,9 +616,10 @@ void resolveWhileNode(astNode_t *node) {
   char *bodyLabelID = getNextLabel();
   char *exitLabelID = getNextLabel();
 
-  myPrint("\n");
+  myPrintSL("\n");
   myPrint("; while statement\n");
 
+  myPrint("br label %%cond%s\n", condLabelID);
   myPrintSL("cond%s:\n", condLabelID);
   symbol_t *exp = resolveExpressionNode(whileNode->condition);
   myPrint("br i1 %%%s, label %%body%s, label %%exit%s\n\n", exp->srcName,
@@ -610,8 +627,8 @@ void resolveWhileNode(astNode_t *node) {
 
   myPrintSL("body%s:\n", bodyLabelID);
   resolveToLLVM(whileNode->codeBlock);
-  myPrint("\n");
-  myPrint("br label %%cond%s\n\n", condLabelID);
+  myPrintSL("\n");
+  myPrint("br label %%cond%s\n", condLabelID);
 
   myPrintSL("exit%s:\n", exitLabelID);
   depth--;
@@ -727,6 +744,7 @@ void resolveIOFunctionCall(functionCallNode_t *callNode) {
   char *scopeSymb = argSymb->isGlobal ? "@" : "%";
 
   // READ
+  (void)getNextReg(); // skip a register
   if (!strcmp(functionName, "read")) {
     char *formatStr =
         argSymb->returnType == INT_TYPE ? "@read_int" : "@read_float";
@@ -755,7 +773,7 @@ void resolveIOFunctionCall(functionCallNode_t *callNode) {
 
 // can be called with id node or functionCallNode
 symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
-  myPrint("\n");
+  myPrintSL("\n");
   myPrint("; function call\n");
   if (node->nodeType == ID_NODE) {
     return resolveParamlessFuncCall(node->payload.id);
@@ -793,7 +811,6 @@ symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
       argSymbols[i] = getReferenceArgSymb(argNode, param);
       continue;
     }
-
     argSymbols[i] = resolveExpressionNode(argList->children[i]);
     if (argSymbols[i]->returnType != param->type) {
       argSymbols[i] = NULL;
