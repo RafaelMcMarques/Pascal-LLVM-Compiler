@@ -1,13 +1,8 @@
-#ifndef AST_NODE_TYPES_H
-#define AST_NODE_TYPES_H
+#ifndef AST_H
+#define AST_H
 
+#include <stdlib.h>
 
-/*
-  This file defines the node types of the AST
-  Node types are based on the grammar productions
-  but not necessarily in a 1:1 relation
-
-*/
 
 typedef struct astNode_t astNode_t;
 
@@ -162,5 +157,8 @@ typedef struct astNode_t {
   } payload; 
 
 } astNode_t;
+
+
+void printAST(astNode_t *root, char* filename);
 
 #endif

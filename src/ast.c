@@ -1,5 +1,4 @@
-#include "ast.h"
-#include "AST_node_types.h"
+#include "../include/ast.h"
 
 #include <stdarg.h>
 #include <stdio.h>

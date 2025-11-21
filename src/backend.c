@@ -1,7 +1,4 @@
-#include "backend.h"
-
-#include "AST_node_types.h"
-#include "data_structures.h"
+#include "../include/backend.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -10,19 +7,12 @@
 
 static int PrintCodeBlock = 1;
 
-static int depth = 0;
+static int identDepth = 0;
 
 static FILE *file = NULL;
 
-hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
-
 // to be used in functions
-unsigned int nextLocalReg = 1;
-unsigned int nextLocalLabel = 1;
-
-// to be used in main
-unsigned int nextGlobalReg = 1;
-unsigned int nextGlobalLabel = 1;
+int NextLocalReg = 1, NextIfLabel = 1, NextWhileLabel = 1;
 
 void resolveToLLVM(astNode_t *node);
 
@@ -49,7 +39,7 @@ char *getVarTypeLLVM(varType_e varType) {
 
 static void myPrint(const char *fmt, ...) {
   // printf("Called myprint\n");
-  for (int i = 0; i < depth; i++) {
+  for (int i = 0; i < identDepth; i++) {
     if (file)
       fprintf(file, "\t");
     else
@@ -77,28 +67,6 @@ static void myPrintSL(const char *fmt, ...) {
     vprintf(fmt, args);
   }
   va_end(args);
-}
-
-void printSymbol(symbol_t *symb) {
-
-  printf("SYMBOL %s:\n", symb->srcName);
-  char *vof = symb->symbType == VARIABLE_ID ? "var" : "func";
-  printf("  symbType: %s\n", vof);
-  char *type = getVarTypeLLVM(symb->returnType);
-  printf("  returnType: %s\n", type);
-
-  if (symb->symbType != FUNCTION_ID) {
-    printf("  isPtr: %d\n", symb->isPtr);
-  } else {
-    printf("  paramCount: %d\n", symb->paramCount);
-    printf("  Parameters:");
-    for (int i = 0; i < symb->paramCount && i < 100; i++) {
-      parameter_t *p = symb->params[i];
-      char *pType = getVarTypeLLVM(p->type);
-      printf("%s byRef=%d, ", pType, p->byReference);
-    }
-    printf("\n");
-  }
 }
 
 char *getLLVMOp(varType_e type, char *op) {
@@ -152,7 +120,8 @@ char *getLLVMOp(varType_e type, char *op) {
   return "?";
 }
 
-varType_e getResultType(varType_e left, varType_e right, const char *op) {
+varType_e getOperationResultType(varType_e left, varType_e right,
+                                 const char *op) {
 
   /* --- Operadores aritméticos básicos (+ - *) --- */
   if (!strcmp(op, "+") || !strcmp(op, "-") || !strcmp(op, "*")) {
@@ -193,7 +162,18 @@ varType_e getResultType(varType_e left, varType_e right, const char *op) {
 
 /* ====== LABEL HELPERS ====== */
 char *getNextReg() {
-  int number = LocalSymTable == NULL ? nextGlobalReg++ : nextLocalReg++;
+  int number = NextLocalReg++;
+
+  char temp[32];
+  int len = snprintf(temp, sizeof(temp), "tmp%d", number);
+
+  char *result = malloc(len + 1);
+  strcpy(result, temp);
+  return result;
+}
+
+char *getNextIfLabel() {
+  int number = NextIfLabel++;
 
   char temp[32];
   int len = snprintf(temp, sizeof(temp), "%d", number);
@@ -203,8 +183,8 @@ char *getNextReg() {
   return result;
 }
 
-char *getNextLabel() {
-  int number = LocalSymTable == NULL ? nextGlobalLabel++ : nextLocalLabel++;
+char *getNextWhileLabel() {
+  int number = NextWhileLabel++;
 
   char temp[32];
   int len = snprintf(temp, sizeof(temp), "%d", number);
@@ -212,57 +192,25 @@ char *getNextLabel() {
   char *result = malloc(len + 1);
   strcpy(result, temp);
   return result;
+}
+
+void enterNewScope() {
+  NextIfLabel = 1;
+  NextWhileLabel = 1;
+  NextLocalReg = 1;
+  initLocalSymTab();
+  return;
+}
+
+void leaveScope() {
+  NextIfLabel = 1;
+  NextWhileLabel = 1;
+  NextLocalReg = 1;
+  destroyLocalSymTab();
+  return;
 }
 
 /* ===== TAB SYMB HELPERS ====== */
-
-int isScopeLocal() { return LocalSymTable != NULL; }
-
-void insertSymbolGlobalScope(symbol_t *symb) {
-  if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
-    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
-    exit(1);
-  }
-}
-
-hashTable_t *getCurrentSymTab() {
-  if (isScopeLocal())
-    return (hashTable_t *)LocalSymTable;
-
-  return GlobalSymTable;
-}
-
-// inserts a symbol in current scope (use only for variables)
-void insertSymbolCurrScope(symbol_t *symb) {
-  hashTable_t *currSymTab = getCurrentSymTab();
-
-  if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
-    printf("ERROR: possible redefinition of %s\n", symb->srcName);
-    exit(1);
-  }
-}
-
-symbol_t *getSymbol(char *id) {
-  symbol_t *symb = NULL;
-
-  if (isScopeLocal()) {
-    printf("local\n");
-    symb = (symbol_t *)getFromHT(LocalSymTable, id);
-  }
-
-  if (!symb) {
-    printf("global\n");
-    symb = (symbol_t *)getFromHT(GlobalSymTable, id);
-  }
-
-  if (!symb) {
-    printf("Undefined reference to %s\n", id);
-    exit(1);
-    return NULL; // wont reach
-  }
-
-  return symb;
-}
 
 /* ======= LIST ITERATOR =======*/
 
@@ -336,26 +284,17 @@ void resolveProgramNode(astNode_t *node) {
   myPrintSL("\n");
 
   myPrint("define i32 @main() {\n");
-  depth++;
+  identDepth++;
   myPrintSL("entry:\n");
   resolveToLLVM(programNode->mainCodeBlock);
   myPrint("ret i32 0\n");
-  depth--;
+  identDepth--;
   myPrint("}\n");
 }
 
 /* ===== VARIABLE DECLARATIONS ===== */
 
-void declareVariableLLVM(symbol_t *symb) {
-  char *name = symb->srcName;
-  char *type = getVarTypeLLVM(symb->returnType);
-
-  if (isScopeLocal()) {
-    myPrint("%%%s = alloca %s\n", name, type);
-  } else {
-    myPrint("@%s = global %s 0\n", name, type);
-  }
-}
+void declareVariableLLVM(symbol_t *symb) {}
 
 // add vars to symTab and call declare
 // this is wrapped by printListNode
@@ -374,7 +313,16 @@ void resolveVarsDefNode(astNode_t *node) {
     symb->isPtr = 1;
 
     insertSymbolCurrScope(symb);
-    declareVariableLLVM(symb);
+
+    char *name = symb->srcName;
+    char *type = getVarTypeLLVM(symb->returnType);
+
+    if (!symb->isGlobal) {
+      myPrint("%%%s = alloca %s\n", name, type);
+    } else {
+      char *initValue = symb->returnType == INT_TYPE ? "0" : "0.0";
+      myPrint("@%s = global %s %s\n", name, type, initValue);
+    }
   }
 }
 
@@ -467,6 +415,7 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
 
   // insert into symtable
   symbol_t *symb = getFunctionSymbol(headerNode);
+  printSymbol(symb);
   insertSymbolGlobalScope(symb);
 
   myPrint("; Subprogram %s\n", symb->srcName);
@@ -487,12 +436,11 @@ void resolveSubprogramHeaderNode(astNode_t *node) {
 void resolveSubprogramDefNode(astNode_t *node) {
   subprogramDefNode_t *subpNode = node->payload.subprogramDef;
 
-  LocalSymTable = createHT(0);
-  nextLocalReg = 1;
+  enterNewScope();
 
   resolveToLLVM(subpNode->header);
 
-  depth++;
+  identDepth++;
   myPrintSL("{\n");
   myPrintSL("entry:\n");
 
@@ -528,11 +476,10 @@ void resolveSubprogramDefNode(astNode_t *node) {
     myPrint("ret void\n");
   }
 
-  depth--;
+  identDepth--;
   myPrint("}\n\n");
 
-  destroyHT(LocalSymTable);
-  LocalSymTable = NULL;
+  leaveScope();
 }
 
 /* ======= STATEMENTS =======*/
@@ -553,7 +500,7 @@ void resolveAssignmentNode(astNode_t *node) {
     myPrint("ERROR: could not assign %s no null expression\n", var->srcName);
     exit(1);
   }
-  if (!isScopeLocal() && var->symbType == FUNCTION_ID) {
+  if (var->symbType == FUNCTION_ID) {
     printf("ERROR: cannot assign value to symbol %s\n", var->srcName);
     exit(1);
   }
@@ -580,58 +527,49 @@ void resolveAssignmentNode(astNode_t *node) {
 }
 
 void resolveIfNode(astNode_t *node) {
-  depth++;
   ifNode_t *ifNode = node->payload.ifNode;
 
   myPrintSL("\n");
   myPrint("; if statement\n");
   symbol_t *exp = resolveExpressionNode(ifNode->condition);
 
-  char *ifLabelID = getNextLabel();
-  char *elseLabelID = getNextLabel();
-  char *endifLabelID = getNextLabel();
+  char *ifLabelID = getNextIfLabel();
   myPrint("br i1 %%%s, label %%then%s, label %%else%s\n\n", exp->srcName,
-          ifLabelID, elseLabelID);
+          ifLabelID, ifLabelID);
 
   myPrintSL("then%s:\n", ifLabelID);
   resolveToLLVM(ifNode->thenBlock);
   myPrintSL("\n");
-  myPrint("br label %%endif%s\n\n", endifLabelID);
+  myPrint("br label %%endif%s\n\n", ifLabelID);
 
-  myPrintSL("else%s:\n", elseLabelID);
+  myPrintSL("else%s:\n", ifLabelID);
   resolveToLLVM(ifNode->elseBlock);
-  myPrint("br label %%endif%s\n\n", endifLabelID);
+  myPrint("br label %%endif%s\n\n", ifLabelID);
   myPrintSL("\n");
 
-  myPrintSL("endif%s:\n", endifLabelID);
-
-  depth--;
+  myPrintSL("endif%s:\n", ifLabelID);
 }
 
 void resolveWhileNode(astNode_t *node) {
-  depth++;
   whileNode_t *whileNode = node->payload.whileNode;
 
-  char *condLabelID = getNextLabel();
-  char *bodyLabelID = getNextLabel();
-  char *exitLabelID = getNextLabel();
+  char *whileLabelID = getNextWhileLabel();
 
   myPrintSL("\n");
   myPrint("; while statement\n");
 
-  myPrint("br label %%cond%s\n", condLabelID);
-  myPrintSL("cond%s:\n", condLabelID);
+  myPrint("br label %%cond%s\n", whileLabelID);
+  myPrintSL("cond%s:\n", whileLabelID);
   symbol_t *exp = resolveExpressionNode(whileNode->condition);
   myPrint("br i1 %%%s, label %%body%s, label %%exit%s\n\n", exp->srcName,
-          bodyLabelID, exitLabelID);
+          whileLabelID, whileLabelID);
 
-  myPrintSL("body%s:\n", bodyLabelID);
+  myPrintSL("body%s:\n", whileLabelID);
   resolveToLLVM(whileNode->codeBlock);
   myPrintSL("\n");
-  myPrint("br label %%cond%s\n", condLabelID);
+  myPrint("br label %%cond%s\n", whileLabelID);
 
-  myPrintSL("exit%s:\n", exitLabelID);
-  depth--;
+  myPrintSL("exit%s:\n", whileLabelID);
 }
 
 /* ====== EXPRESSIONS =====*/
@@ -677,7 +615,7 @@ symbol_t *getReferenceArgSymb(expressionNode_t *argNode, parameter_t *param) {
 
 // use when function in pascal is called with only its id
 symbol_t *resolveParamlessFuncCall(idNode_t *idNode) {
-  symbol_t *funcSym = getSymbol(idNode->id);
+  symbol_t *funcSym = getGlobalSymbol(idNode->id);
   char *functionName = funcSym->srcName;
 
   if (funcSym->paramCount) {
@@ -792,10 +730,19 @@ symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
     resolveIOFunctionCall(callNode);
     return NULL;
   }
-  symbol_t *funcSym = getSymbol(functionName);
+
+  // functions are always global
+  symbol_t *funcSym = getGlobalSymbol(functionName);
+
+  if (funcSym->symbType != FUNCTION_ID) {
+    printf("ERROR: %s is not a function\n", functionName);
+    exit(1);
+    return NULL;
+  }
 
   if (argumentCount != funcSym->paramCount) {
     printf("ERROR: wrong number of arguments for function %s\n", functionName);
+    printf("gave %d, expected %d\n", argumentCount, funcSym->paramCount);
     exit(1);
     return NULL; // unreachable
   }
@@ -865,12 +812,9 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
 
   symbol_t *newSymb = malloc(sizeof(symbol_t));
 
-  // function call
+  // this is a paramless function call
   if (symb->symbType == FUNCTION_ID) {
-    if (!isScopeLocal()) {
-      // this is a function call without params
-      return resolveFunctionCallToLLVM(node);
-    } // else it is referencing the return value
+    return resolveFunctionCallToLLVM(node);
   }
 
   // no need to load
@@ -929,7 +873,7 @@ symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
 
   char *llvmInstruction;
   if (rOp)
-    resultType = getResultType(lOp->returnType, rOp->returnType, op);
+    resultType = getOperationResultType(lOp->returnType, rOp->returnType, op);
   else
     resultType = lOp->returnType;
 
@@ -1053,15 +997,16 @@ void resolveToLLVM(astNode_t *node) {
 
 void resolveASTtoLLVM(astNode_t *root) {
   file = fopen("a.ll", "w"); // open file for writing
-  depth = 0;
   if (file == NULL) {
     printf("Error opening file.\n");
     exit(1);
   }
 
-  depth = 0;
-  GlobalSymTable = createHT(0);
+  initGlobalSymTab();
+
   resolveToLLVM(root);
+
+  destroyGlobalSymTab();
   if (file)
     fclose(file);
 }

@@ -1,7 +1,9 @@
-#include "data_structures.h"
+#include "../include/symbol_table.h"
 
 #include <stdio.h>
 #include <string.h>
+
+hashTable_t *GlobalSymTable = NULL, *LocalSymTable = NULL;
 
 #define INITIAL_SIZE 101
 
@@ -111,47 +113,96 @@ void destroyHT(hashTable_t *ht) {
   ht = NULL;
 }
 
-stack_t *createStack() {
-  stack_t *s = malloc(sizeof(stack_t));
-  if (!s) {
-    perror("Erro ao criar pilha");
-    exit(EXIT_FAILURE);
+void initGlobalSymTab() { GlobalSymTable = createHT(0); }
+
+void initLocalSymTab() { LocalSymTable = createHT(0); }
+
+void destroyGlobalSymTab() {
+  destroyHT(GlobalSymTable);
+  GlobalSymTable = NULL;
+}
+
+void destroyLocalSymTab() {
+  destroyHT(LocalSymTable);
+  LocalSymTable = NULL;
+}
+
+void printSymbol(symbol_t *symb) {
+
+  printf("SYMBOL %s:\n", symb->srcName);
+  char *vof = symb->symbType == VARIABLE_ID ? "var" : "func";
+  printf("  symbType: %s\n", vof);
+  printf("  returnType: %d\n", symb->returnType);
+
+  if (symb->symbType != FUNCTION_ID) {
+    printf("  isPtr: %d\n", symb->isPtr);
+  } else {
+    printf("  paramCount: %d\n", symb->paramCount);
+    printf("  Parameters:");
+    for (int i = 0; i < symb->paramCount && i < 100; i++) {
+      parameter_t *p = symb->params[i];
+      printf("Type:%d byRef=%d, ", p->type, p->byReference);
+    }
+    printf("\n");
   }
-  s->top = NULL;
-  return s;
 }
 
-void stackPush(stack_t *s, void *data) {
-  stackNode_t *n = malloc(sizeof(stackNode_t));
-  if (!n) {
-    perror("Erro ao empilhar");
-    exit(EXIT_FAILURE);
+void insertSymbolGlobalScope(symbol_t *symb) {
+  if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
+    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
+    exit(1);
   }
-  n->data = data;
-  n->next = s->top;
-  s->top = n;
 }
 
-void *stackPop(stack_t *s) {
-  if (!s->top)
-    return NULL;
-  stackNode_t *n = s->top;
-  void *data = n->data;
-  s->top = n->next;
-  free(n);
-  return data;
+int isScopeLocal() { return LocalSymTable != NULL; }
+
+hashTable_t *getCurrentSymTab() {
+  return isScopeLocal() ? LocalSymTable : GlobalSymTable;
 }
 
-void *stackPeek(stack_t *s) {
-  if (!s->top)
-    return NULL;
-  return s->top->data;
+// inserts a symbol in current scope (use only for variables)
+void insertSymbolCurrScope(symbol_t *symb) {
+  hashTable_t *currSymTab = getCurrentSymTab();
+
+  if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
+    printf("ERROR: possible redefinition of %s\n", symb->srcName);
+    exit(1);
+  }
 }
 
-int stackIsEmpty(stack_t *s) { return s->top == NULL; }
+symbol_t *getSymbol(char *id) {
+  symbol_t *symb = NULL;
 
-void freeStack(stack_t *s) {
-  while (!stackIsEmpty(s))
-    stackPop(s);
-  free(s);
+  if (isScopeLocal()) {
+    printf("local\n");
+    symb = (symbol_t *)getFromHT(LocalSymTable, id);
+  }
+
+  if (!symb) {
+    printf("global\n");
+    symb = (symbol_t *)getFromHT(GlobalSymTable, id);
+  }
+
+  if (!symb) {
+    printf("ERROR: Undefined reference to %s\n", id);
+    exit(1);
+    return NULL; // wont reach
+  }
+
+  return symb;
+}
+
+symbol_t *getGlobalSymbol(char *id) {
+  symbol_t *symb = NULL;
+
+  printf("global\n");
+  symb = (symbol_t *)getFromHT(GlobalSymTable, id);
+
+  if (!symb) {
+    printf("ERROR: Undefined reference to %s\n", id);
+    exit(1);
+    return NULL; // wont reach
+  }
+
+  return symb;
 }

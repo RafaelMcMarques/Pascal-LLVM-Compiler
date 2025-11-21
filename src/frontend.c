@@ -1,5 +1,4 @@
-#include "frontend.h"
-#include "AST_node_types.h"
+#include "../include/frontend.h"
 
 #include <stdio.h>
 #include <stdlib.h>

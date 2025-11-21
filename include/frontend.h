@@ -1,7 +1,7 @@
 #ifndef FRONTEND_H
 #define FRONTEND_H
 
-#include "AST_node_types.h"
+#include "ast.h"
 
 typedef enum lexemeType_e {
   NUMBER_LITERAL,

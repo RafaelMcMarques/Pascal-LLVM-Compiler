@@ -2,7 +2,8 @@
 #define BACKEND_H
 
 #include <stdlib.h>
-#include "AST_node_types.h"
+#include "ast.h"
+#include "symbol_table.h"
 
 void resolveASTtoLLVM(astNode_t *root);
 

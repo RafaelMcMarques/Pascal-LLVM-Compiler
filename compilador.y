@@ -12,7 +12,6 @@ void yyerror(const char *s);
 %}
 
 %code requires {
-  #include "AST_node_types.h"
   #include "frontend.h"
   #include "ast.h"
   #include "backend.h"

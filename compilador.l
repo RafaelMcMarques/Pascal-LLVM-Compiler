@@ -2,7 +2,7 @@
 
 %{
 #include "compilador.tab.h" // para utilizar os TOKENS criados pelo BISON
-#include "AST_node_types.h"
+#include "ast.h"
 #include "frontend.h"
 %}
 
