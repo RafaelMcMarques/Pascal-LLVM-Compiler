@@ -67,4 +67,6 @@ symbol_t *getSymbol(char *id);
 
 symbol_t *getGlobalSymbol(char *id);
 
+symbol_t *createFunctionSymbol(subprogramHeaderNode_t *headerNode);
+
 #endif

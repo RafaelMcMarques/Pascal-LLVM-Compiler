@@ -14,8 +14,6 @@ static FILE *file = NULL;
 // to be used in functions
 int NextLocalReg = 1, NextIfLabel = 1, NextWhileLabel = 1;
 
-void resolveToLLVM(astNode_t *node);
-
 /* ======= PRINT HELPERS =======*/
 
 char *getVarTypeLLVM(varType_e varType) {
@@ -38,7 +36,6 @@ char *getVarTypeLLVM(varType_e varType) {
 }
 
 static void myPrint(const char *fmt, ...) {
-  // printf("Called myprint\n");
   for (int i = 0; i < identDepth; i++) {
     if (file)
       fprintf(file, "\t");
@@ -141,8 +138,10 @@ varType_e getOperationResultType(varType_e left, varType_e right,
     if (left == INT_TYPE && right == INT_TYPE)
       return INT_TYPE;
 
-    printf("Invalid div or mod for real type\n"); // div/mod em real é inválido
+    printf("ERROR: Invalid div or mod for real type\n"); // div/mod em real é
+                                                         // inválido
     exit(1);
+    return 0; // wont reach
   }
 
   /* --- Booleanos ("and", "or") --- */
@@ -156,7 +155,7 @@ varType_e getOperationResultType(varType_e left, varType_e right,
     return INT_TYPE;
   }
 
-  printf("INVALID OPERATION\n");
+  printf("ERROR: invalid operation\n");
   exit(1);
 }
 
@@ -210,49 +209,6 @@ void leaveScope() {
   return;
 }
 
-/* ===== TAB SYMB HELPERS ====== */
-
-/* ======= LIST ITERATOR =======*/
-
-void resolveListNode(astNode_t *node) {
-
-  listNode_t *listNode = node->payload.list;
-
-  switch (listNode->listNodeType) {
-  case STATEMENT_LIST:
-    // myPrint("; statements(%d)\n", listNode->childrenCount);
-    if (!PrintCodeBlock)
-      return;
-    break;
-  case IDS_LIST:
-    myPrint("IDS LIST (%d)\n", listNode->childrenCount);
-    break;
-  case SUBPROGRAM_LIST:
-    // myPrint("; subprograms(%d)\n", listNode->childrenCount);
-    break;
-  case VARS_DEFINITIONS_LIST:
-    // myPrint("VAR DEFS LIST (%d)\n", listNode->childrenCount);
-    break;
-  case PARAM_DEF_LIST:
-    myPrint("PARAM DEFS LIST (%d)\n", listNode->childrenCount);
-    break;
-  case EXPRESSION_LIST:
-    myPrint("EXPRESSION LIST (%d)\n", listNode->childrenCount);
-    break;
-  default:
-    myPrint("Unknown list type node\n");
-    break;
-  }
-
-  for (int i = 0; i < listNode->childrenCount; i++) {
-    if (!listNode->children[i]) {
-      myPrint("EMPTY CHILD NODE\n");
-      continue;
-    }
-    resolveToLLVM(listNode->children[i]);
-  }
-}
-
 void declareIOFunctionsLLVM() {
   myPrint("; I/O functions\n");
 
@@ -270,38 +226,43 @@ void declareIOFunctionsLLVM() {
 }
 
 /* ===== PROGRAM NODE ===== */
-void resolveProgramNode(astNode_t *node) {
-  programNode_t *programNode = node->payload.program;
+void resolveProgramNode(programNode_t *programNode) {
 
   myPrint("; PROGRAM: %s\n\n", programNode->programName);
 
   declareIOFunctionsLLVM();
 
   myPrint("; global variable declarations\n");
-  resolveToLLVM(programNode->varDeclarationList);
+  resolveVarsDefsList(programNode->varDeclarationList->payload.list);
   myPrintSL("\n");
-  resolveToLLVM(programNode->subprogramDeclarationList);
+
+  resolveSubprogramList(programNode->subprogramDeclarationList->payload.list);
   myPrintSL("\n");
 
   myPrint("define i32 @main() {\n");
   identDepth++;
+
   myPrintSL("entry:\n");
-  resolveToLLVM(programNode->mainCodeBlock);
+  // TODO: change
+  resolveCodeBlockNode(programNode->mainCodeBlock->payload.list);
   myPrint("ret i32 0\n");
+
   identDepth--;
   myPrint("}\n");
 }
 
 /* ===== VARIABLE DECLARATIONS ===== */
 
-void declareVariableLLVM(symbol_t *symb) {}
+void resolveVarsDefsList(listNode_t *listNode) {
+  for (int i = 0; i < listNode->childrenCount; i++) {
+    resolveVarsDefNode(listNode->children[i]->payload.varsDefinition);
+  }
+}
 
-// add vars to symTab and call declare
-// this is wrapped by printListNode
-void resolveVarsDefNode(astNode_t *node) {
-  varsDefinitionNode_t *varsDefNode = node->payload.varsDefinition;
+void resolveVarsDefNode(varsDefinitionNode_t *varsDefNode) {
 
   listNode_t *varsList = varsDefNode->varsList->payload.list;
+
   for (int i = 0; i < varsList->childrenCount; i++) {
     idNode_t *idNode = varsList->children[i]->payload.id;
     symbol_t *symb = malloc(sizeof(symbol_t));
@@ -326,11 +287,17 @@ void resolveVarsDefNode(astNode_t *node) {
   }
 }
 
-/* ====== FUNCTIONS ====== */
+/* ====== SUBPROGRAMS ====== */
+
+void resolveSubprogramList(listNode_t *subprogramList) {
+  for (int i = 0; i < subprogramList->childrenCount; i++) {
+    resolveSubprogramDefNode(
+        subprogramList->children[i]->payload.subprogramDef);
+  }
+}
 
 // add parameters to sym tab and generate llvm
-void resolveParameterDefNode(astNode_t *node) {
-  paramDefNode_t *paramDefNode = node->payload.paramDefNode;
+void resolveParameterDefNode(paramDefNode_t *paramDefNode) {
 
   varType_e type = paramDefNode->varType;
   char *typeStr = getVarTypeLLVM(type);
@@ -360,92 +327,50 @@ void resolveParameterDefNode(astNode_t *node) {
   }
 }
 
-// register params in SymTab and generate LLVM
-void resolveHeaderParamsList(listNode_t *paramsList) {
+// iterate all params definitions
+void resolveHeaderParamsDefsList(listNode_t *paramsList) {
   char *separator = "";
   for (int i = 0; i < paramsList->childrenCount; i++) {
     myPrintSL("%s", separator);
-    resolveParameterDefNode(paramsList->children[i]);
+    resolveParameterDefNode(paramsList->children[i]->payload.paramDefNode);
     separator = ", ";
   }
 }
 
-// returns symbol for a function (name, type, params...)
-symbol_t *getFunctionSymbol(subprogramHeaderNode_t *headerNode) {
-  symbol_t *symb = malloc(sizeof(symbol_t));
-  symb->srcName = headerNode->id->payload.id->id;
-  symb->returnType = headerNode->returnType;
-  symb->symbType = FUNCTION_ID;
-  symb->isPtr = 0;
-  symb->isGlobal = 1;
-
-  if (!headerNode->params) {
-    symb->paramCount = 0;
-    return symb;
-  }
-
-  // register params
-  int paramCount = 0;
-  listNode_t *paramsList = headerNode->params->payload.list;
-  for (int i = 0; i < paramsList->childrenCount; i++) {
-    paramDefNode_t *paramDefNode =
-        paramsList->children[i]->payload.paramDefNode;
-    listNode_t *idsList = paramDefNode->idsList->payload.list;
-
-    varType_e type = paramDefNode->varType;
-    int byRef = paramDefNode->byReference;
-    int quant = idsList->childrenCount;
-
-    for (int j = 0; j < quant; j++) {
-      parameter_t *param = malloc(sizeof(parameter_t));
-      param->byReference = byRef;
-      param->type = type;
-      symb->params[paramCount] = param;
-      paramCount++;
-    }
-  }
-
-  symb->paramCount = paramCount;
-  return symb;
-}
-
 // generate code and symbol for function declaration
-void resolveSubprogramHeaderNode(astNode_t *node) {
-  subprogramHeaderNode_t *headerNode = node->payload.subprogramHeader;
+void resolveSubprogramHeaderNode(subprogramHeaderNode_t *headerNode) {
 
   // insert into symtable
-  symbol_t *symb = getFunctionSymbol(headerNode);
-  printSymbol(symb);
+  symbol_t *symb = createFunctionSymbol(headerNode);
   insertSymbolGlobalScope(symb);
 
   myPrint("; Subprogram %s\n", symb->srcName);
 
   // declare in LLVM
   char *type = getVarTypeLLVM(symb->returnType);
+
   myPrint("define %s @%s", type, symb->srcName);
 
   // declar params in LLVM and add them to local symTable
   myPrintSL("(");
   if (headerNode->params) {
-    resolveHeaderParamsList(headerNode->params->payload.list);
+    resolveHeaderParamsDefsList(headerNode->params->payload.list);
   }
   myPrintSL(") ");
 }
 
 // resolve a function to llvm
-void resolveSubprogramDefNode(astNode_t *node) {
-  subprogramDefNode_t *subpNode = node->payload.subprogramDef;
-
+void resolveSubprogramDefNode(subprogramDefNode_t *subpNode) {
   enterNewScope();
 
-  resolveToLLVM(subpNode->header);
+  resolveSubprogramHeaderNode(subpNode->header->payload.subprogramHeader);
 
   identDepth++;
   myPrintSL("{\n");
   myPrintSL("entry:\n");
 
   myPrint("; local variables\n");
-  resolveToLLVM(subpNode->declarations);
+  resolveVarsDefsList(subpNode->declarations->payload.list);
 
   // declare return value
   char *name = subpNode->header->payload.subprogramHeader->id->payload.id->id;
@@ -464,7 +389,7 @@ void resolveSubprogramDefNode(astNode_t *node) {
   }
 
   // statements
-  resolveToLLVM(subpNode->codeBlock);
+  resolveCodeBlockNode(subpNode->codeBlock->payload.list);
 
   // return
   if (type != NO_TYPE) {
@@ -483,18 +408,60 @@ void resolveSubprogramDefNode(astNode_t *node) {
 }
 
 /* ======= STATEMENTS =======*/
+void resolveCodeBlockNode(listNode_t *statementList) {
+  for (int i = 0; i < statementList->childrenCount; i++) {
+    astNode_t *childNode = statementList->children[i];
+    switch (childNode->nodeType) {
+    case (ASSIGNMENT_NODE):
+      resolveAssignmentNode(childNode->payload.assignment);
+      break;
+    case (IF_NODE):
+      resolveIfNode(childNode->payload.ifNode);
+      break;
+    case (WHILE_NODE):
+      resolveWhileNode(childNode->payload.whileNode);
+      break;
+    case (FUNCTION_CALL_NODE):
+      resolveFunctionCallNode(childNode->payload.functionCall);
+      break;
+    default:
+      printf("ERROR: unknown statement\n");
+      exit(1);
+      break;
+    }
+  }
+}
 
-// forward declaration
-symbol_t *resolveExpressionNode(astNode_t *);
+// converts the type of a value in a register to match resultType
+symbol_t *convertSymbToType(symbol_t *op, varType_e resultType) {
+  if (op->returnType == resultType)
+    return op;
 
-void resolveAssignmentNode(astNode_t *node) {
-  assignmentNode_t *asNode = node->payload.assignment;
+  symbol_t *newS = malloc(sizeof(symbol_t));
+
+  newS->srcName = getNextReg();
+  newS->isGlobal = 0;
+  newS->isPtr = 0;
+  newS->returnType = resultType;
+  newS->symbType = VARIABLE_ID;
+
+  // int to real
+  if (op->returnType == INT_TYPE) {
+    myPrint("%%%s = sitofp i32 %%%s to float\n", newS->srcName, op->srcName);
+  } else {
+    myPrint("%%%s = fptosi float %%%s to int\n", newS->srcName, op->srcName);
+  }
+
+  return newS;
+}
+
+void resolveAssignmentNode(assignmentNode_t *asNode) {
 
   symbol_t *var = getSymbol(asNode->variable->payload.id->id);
   myPrintSL("\n");
   myPrint("; Assignment (%s :=  exp)\n", var->srcName);
 
-  symbol_t *exp = resolveExpressionNode(asNode->exp);
+  symbol_t *exp = resolveExpressionNode(asNode->exp->payload.expression);
 
   if (!exp) {
     myPrint("ERROR: could not assign %s no null expression\n", var->srcName);
@@ -512,9 +479,15 @@ void resolveAssignmentNode(astNode_t *node) {
 
   char *typeStrE = getVarTypeLLVM(exp->returnType);
   char *typeStrV = getVarTypeLLVM(var->returnType);
+
   if (exp->returnType != var->returnType) {
-    printf("ERROR: cannot assign %s to %s\n", typeStrE, typeStrV);
-    exit(1);
+    if (exp->returnType == INT_TYPE && var->returnType == REAL_TYPE) {
+      exp = convertSymbToType(exp, REAL_TYPE);
+      typeStrE = getVarTypeLLVM(exp->returnType);
+    } else {
+      printf("ERROR: cannot assign %s to %s\n", typeStrE, typeStrV);
+      exit(1);
+    }
   }
 
   if (var->isGlobal) {
@@ -526,32 +499,30 @@ void resolveAssignmentNode(astNode_t *node) {
   }
 }
 
-void resolveIfNode(astNode_t *node) {
-  ifNode_t *ifNode = node->payload.ifNode;
+void resolveIfNode(ifNode_t *ifNode) {
 
   myPrintSL("\n");
   myPrint("; if statement\n");
-  symbol_t *exp = resolveExpressionNode(ifNode->condition);
+  symbol_t *exp = resolveExpressionNode(ifNode->condition->payload.expression);
 
   char *ifLabelID = getNextIfLabel();
   myPrint("br i1 %%%s, label %%then%s, label %%else%s\n\n", exp->srcName,
           ifLabelID, ifLabelID);
 
   myPrintSL("then%s:\n", ifLabelID);
-  resolveToLLVM(ifNode->thenBlock);
+  resolveCodeBlockNode(ifNode->thenBlock->payload.list);
   myPrintSL("\n");
   myPrint("br label %%endif%s\n\n", ifLabelID);
 
   myPrintSL("else%s:\n", ifLabelID);
-  resolveToLLVM(ifNode->elseBlock);
+  resolveCodeBlockNode(ifNode->elseBlock->payload.list);
   myPrint("br label %%endif%s\n\n", ifLabelID);
   myPrintSL("\n");
 
   myPrintSL("endif%s:\n", ifLabelID);
 }
 
-void resolveWhileNode(astNode_t *node) {
-  whileNode_t *whileNode = node->payload.whileNode;
+void resolveWhileNode(whileNode_t *whileNode) {
 
   char *whileLabelID = getNextWhileLabel();
 
@@ -560,12 +531,13 @@ void resolveWhileNode(astNode_t *node) {
 
   myPrint("br label %%cond%s\n", whileLabelID);
   myPrintSL("cond%s:\n", whileLabelID);
-  symbol_t *exp = resolveExpressionNode(whileNode->condition);
+  symbol_t *exp =
+      resolveExpressionNode(whileNode->condition->payload.expression);
   myPrint("br i1 %%%s, label %%body%s, label %%exit%s\n\n", exp->srcName,
           whileLabelID, whileLabelID);
 
   myPrintSL("body%s:\n", whileLabelID);
-  resolveToLLVM(whileNode->codeBlock);
+  resolveCodeBlockNode(whileNode->codeBlock->payload.list);
   myPrintSL("\n");
   myPrint("br label %%cond%s\n", whileLabelID);
 
@@ -575,9 +547,9 @@ void resolveWhileNode(astNode_t *node) {
 /* ====== EXPRESSIONS =====*/
 
 // puts a literal into a register
-symbol_t *resolveLiteralToLLVM(astNode_t *node) {
+symbol_t *resolveLiteralNode(literalNode_t *literalNode) {
   symbol_t *symb = malloc(sizeof(symbol_t));
-  char *literal = node->payload.literal->literal;
+  char *literal = literalNode->literal;
 
   symb->srcName = getNextReg();
   symb->isGlobal = 0;
@@ -644,9 +616,6 @@ symbol_t *resolveParamlessFuncCall(idNode_t *idNode) {
   return returnSymb;
 }
 
-// forward declaration
-symbol_t *resolveIdToLLVM(astNode_t *node);
-
 void resolveIOFunctionCall(functionCallNode_t *callNode) {
   char *functionName = callNode->id->payload.id->id;
 
@@ -657,67 +626,59 @@ void resolveIOFunctionCall(functionCallNode_t *callNode) {
 
   listNode_t *argsList = callNode->arguments->payload.list;
 
-  if (argsList->childrenCount != 1) {
-    printf("ERROR: function %s called with too many arguments\n", functionName);
-    exit(1);
-  }
+  for (int i = 0; i < argsList->childrenCount; i++) {
+    expressionNode_t *argNode = argsList->children[i]->payload.expression;
 
-  expressionNode_t *argNode = argsList->children[0]->payload.expression;
+    if (strcmp(argNode->op, "leaf") ||
+        (argNode->lOperand->nodeType != ID_NODE)) {
+      printf("ERROR: function %s called with wrong type arguments\n",
+             functionName);
+      exit(1);
+    }
 
-  if (strcmp(argNode->op, "leaf") || (argNode->lOperand->nodeType != ID_NODE)) {
-    printf("ERROR: function %s called with wrong type arguments\n",
-           functionName);
-    exit(1);
-  }
+    idNode_t *idNode = argNode->lOperand->payload.id;
+    symbol_t *argSymb = getSymbol(idNode->id);
 
-  idNode_t *idNode = argNode->lOperand->payload.id;
-  symbol_t *argSymb = getSymbol(idNode->id);
+    if ((argSymb->symbType != VARIABLE_ID) || !argSymb->isPtr) {
+      printf("ERROR: function %s called with wrong type arguments\n",
+             functionName);
+      exit(1);
+    }
 
-  if ((argSymb->symbType != VARIABLE_ID) || !argSymb->isPtr) {
-    printf("ERROR: function %s called with wrong type arguments\n",
-           functionName);
-    exit(1);
-  }
+    char *scopeSymb = argSymb->isGlobal ? "@" : "%";
 
-  char *scopeSymb = argSymb->isGlobal ? "@" : "%";
+    // READ
+    if (!strcmp(functionName, "read")) {
+      char *formatStr =
+          argSymb->returnType == INT_TYPE ? "@read_int" : "@read_float";
+      myPrint("call i32 (ptr, ...) @__isoc99_scanf(ptr %s, ptr %s%s)\n",
+              formatStr, scopeSymb, argSymb->srcName);
+    }
 
-  // READ
-  (void)getNextReg(); // skip a register
-  if (!strcmp(functionName, "read")) {
-    char *formatStr =
-        argSymb->returnType == INT_TYPE ? "@read_int" : "@read_float";
-    myPrint("call i32 (ptr, ...) @__isoc99_scanf(ptr %s, ptr %s%s)\n",
-            formatStr, scopeSymb, argSymb->srcName);
-    return;
-  }
+    // WRITE
+    if (!strcmp(functionName, "write")) {
+      symbol_t *resolvedArgSymb = resolveIdNode(argNode->lOperand->payload.id);
 
-  // WRITE
-  if (!strcmp(functionName, "write")) {
-    symbol_t *resolvedArgSymb = resolveIdToLLVM(argNode->lOperand);
+      if (resolvedArgSymb->returnType == REAL_TYPE) {
+        char *nextReg = getNextReg();
+        myPrint(" %%%s = fpext float %%%s to double\n", nextReg,
+                resolvedArgSymb->srcName);
+        myPrint("call i32 (ptr, ...) @printf(ptr  @write_float, double %%%s)\n",
+                nextReg);
 
-    if (resolvedArgSymb->returnType == REAL_TYPE) {
-      char *nextReg = getNextReg();
-      myPrint(" %%%s = fpext float %%%s to double\n", nextReg,
-              resolvedArgSymb->srcName);
-      myPrint("call i32 (ptr, ...) @printf(ptr  @write_float, double %%%s)\n",
-              nextReg);
-
-    } else {
-      myPrint("call i32 (ptr, ...) @printf(ptr @write_int, i32 %%%s)\n",
-              resolvedArgSymb->srcName);
+      } else {
+        myPrint("call i32 (ptr, ...) @printf(ptr @write_int, i32 %%%s)\n",
+                resolvedArgSymb->srcName);
+      }
     }
   }
 }
 
 // can be called with id node or functionCallNode
-symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
+symbol_t *resolveFunctionCallNode(functionCallNode_t *callNode) {
   myPrintSL("\n");
   myPrint("; function call\n");
-  if (node->nodeType == ID_NODE) {
-    return resolveParamlessFuncCall(node->payload.id);
-  }
 
-  functionCallNode_t *callNode = node->payload.functionCall;
   listNode_t *argList =
       callNode->hasArguments ? callNode->arguments->payload.list : NULL;
 
@@ -758,7 +719,8 @@ symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
       argSymbols[i] = getReferenceArgSymb(argNode, param);
       continue;
     }
-    argSymbols[i] = resolveExpressionNode(argList->children[i]);
+    argSymbols[i] =
+        resolveExpressionNode(argList->children[i]->payload.expression);
     if (argSymbols[i]->returnType != param->type) {
       argSymbols[i] = NULL;
     }
@@ -805,8 +767,8 @@ symbol_t *resolveFunctionCallToLLVM(astNode_t *node) {
 
 // loads variable into register or calls function and stores return value in
 // register
-symbol_t *resolveIdToLLVM(astNode_t *node) {
-  char *id = node->payload.id->id;
+symbol_t *resolveIdNode(idNode_t *idNode) {
+  char *id = idNode->id;
 
   symbol_t *symb = getSymbol(id);
 
@@ -814,7 +776,7 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
 
   // this is a paramless function call
   if (symb->symbType == FUNCTION_ID) {
-    return resolveFunctionCallToLLVM(node);
+    return resolveParamlessFuncCall(idNode);
   }
 
   // no need to load
@@ -841,35 +803,11 @@ symbol_t *resolveIdToLLVM(astNode_t *node) {
   return newSymb;
 }
 
-// converts the type of a value in a register to match resultType
-symbol_t *convertSymbToType(symbol_t *op, varType_e resultType) {
-  if (op->returnType == resultType)
-    return op;
-
-  symbol_t *newS = malloc(sizeof(symbol_t));
-
-  newS->srcName = getNextReg();
-  newS->isGlobal = 0;
-  newS->isPtr = 0;
-  newS->returnType = resultType;
-  newS->symbType = VARIABLE_ID;
-
-  // int to real
-  if (op->returnType == INT_TYPE) {
-    myPrint("%%%s = sitofp i32 %%%s to float\n", newS->srcName, op->srcName);
-  } else {
-    myPrint("%%%s = fptosi float %%%s to int\n", newS->srcName, op->srcName);
-  }
-
-  return newS;
-}
-
 // generates code for operations
-symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
+symbol_t *resolveOperation(symbol_t *lOp, char *op, symbol_t *rOp) {
   varType_e resultType;
 
-  printf("%s\n", op);
-  printSymbol(rOp);
+  // printSymbol(rOp);
 
   char *llvmInstruction;
   if (rOp)
@@ -878,7 +816,6 @@ symbol_t *resolveOperationToLLVM(symbol_t *lOp, char *op, symbol_t *rOp) {
     resultType = lOp->returnType;
 
   llvmInstruction = getLLVMOp(resultType, op);
-  printf("resolve op\n");
 
   symbol_t *symb = malloc(sizeof(symbol_t));
   symb->srcName = getNextReg();
@@ -911,27 +848,26 @@ symbol_t *expressionResolutionWrapper(astNode_t *node) {
     return NULL;
   switch (node->nodeType) {
   case EXPRESSION_NODE:
-    return resolveExpressionNode(node);
+    return resolveExpressionNode(node->payload.expression);
     break;
   case ID_NODE:
-    return resolveIdToLLVM(node);
+    return resolveIdNode(node->payload.id);
     break;
   case FUNCTION_CALL_NODE:
-    return resolveFunctionCallToLLVM(node);
+    return resolveFunctionCallNode(node->payload.functionCall);
     break;
   case LITERAL_NODE:
-    return resolveLiteralToLLVM(node);
+    return resolveLiteralNode(node->payload.literal);
     break;
   default:
-    printf("Ainda nao implementei essa exp\n");
-    return NULL;
-    break;
+    printf("ERROR: unknown expression\n");
+    exit(1);
+    return NULL; // wont reach
   }
 }
 
 // resolves an expression
-symbol_t *resolveExpressionNode(astNode_t *node) {
-  expressionNode_t *expressionNode = node->payload.expression;
+symbol_t *resolveExpressionNode(expressionNode_t *expressionNode) {
 
   symbol_t *lOp = expressionResolutionWrapper(expressionNode->lOperand);
   symbol_t *rOp = expressionResolutionWrapper(expressionNode->rOperand);
@@ -940,63 +876,11 @@ symbol_t *resolveExpressionNode(astNode_t *node) {
     return lOp;
   }
 
-  return resolveOperationToLLVM(lOp, expressionNode->op, rOp);
-}
-
-/* ======= START AND NODE WRAPPER =======*/
-
-void resolveToLLVM(astNode_t *node) {
-  if (!node) {
-    myPrint("NULL NODE\n");
-    return;
-  }
-
-  switch (node->nodeType) {
-
-  case LIST_NODE:
-    resolveListNode(node);
-    break;
-  case PROGRAM_NODE:
-    resolveProgramNode(node);
-    break;
-  case VARS_DEFINITION_NODE:
-    resolveVarsDefNode(node);
-    break;
-  case PARAMETER_DEF_NODE:
-    resolveParameterDefNode(node);
-    break;
-  case SUBPROGRAM_HEADER_NODE:
-    resolveSubprogramHeaderNode(node);
-    break;
-  case SUBPROGRAM_DEF_NODE:
-    resolveSubprogramDefNode(node);
-    break;
-  case ASSIGNMENT_NODE:
-    resolveAssignmentNode(node);
-    break;
-  case IF_NODE:
-    resolveIfNode(node);
-    break;
-  case WHILE_NODE:
-    resolveWhileNode(node);
-    break;
-  case EXPRESSION_NODE:
-    resolveExpressionNode(node);
-    break;
-  case LITERAL_NODE:
-    resolveLiteralToLLVM(node);
-    break;
-  case FUNCTION_CALL_NODE:
-    resolveFunctionCallToLLVM(node);
-    break;
-  default:
-    myPrint("UNKNOWN NODE\n");
-    break;
-  }
+  return resolveOperation(lOp, expressionNode->op, rOp);
 }
 
 void resolveASTtoLLVM(astNode_t *root) {
-  file = fopen("a.ll", "w"); // open file for writing
+  file = fopen("a.out", "w"); // open file for writing
   if (file == NULL) {
     printf("Error opening file.\n");
     exit(1);
@@ -1004,7 +888,7 @@ void resolveASTtoLLVM(astNode_t *root) {
 
   initGlobalSymTab();
 
-  resolveToLLVM(root);
+  resolveProgramNode(root->payload.program);
 
   destroyGlobalSymTab();
   if (file)

@@ -66,8 +66,10 @@ DECLARACOES_DE_SUBPROGRAMAS
 ENUNCIADO_COMPOSTO
 PONTO_FINAL {
   astNode_t *node = createProgramNode($2, $7, $8, $9);
-  printAST(node, "output.txt");
+  //printAST(node, "ast.txt");
+  printf("AST built with no errors\n");
   resolveASTtoLLVM(node);
+  printf("Compiled with no errors\n");
 }
 ;
 

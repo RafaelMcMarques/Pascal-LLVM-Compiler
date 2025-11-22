@@ -40,7 +40,6 @@ int insertHT(hashTable_t *ht, const char *key, void *value) {
   /* Verifica se chave já existe */
   while (node) {
     if (strcmp(node->key, key) == 0) {
-      printf("Simb já na hash!\n");
       return 0;
     }
     node = node->next;
@@ -149,7 +148,7 @@ void printSymbol(symbol_t *symb) {
 
 void insertSymbolGlobalScope(symbol_t *symb) {
   if (!insertHT(GlobalSymTable, symb->srcName, symb)) {
-    printf("ERROR: possible redeclaration of %s\n", symb->srcName);
+    printf("ERROR: redefinition of %s\n", symb->srcName);
     exit(1);
   }
 }
@@ -165,7 +164,7 @@ void insertSymbolCurrScope(symbol_t *symb) {
   hashTable_t *currSymTab = getCurrentSymTab();
 
   if (!insertHT(currSymTab, symb->srcName, (void *)symb)) {
-    printf("ERROR: possible redefinition of %s\n", symb->srcName);
+    printf("ERROR: redefinition of %s\n", symb->srcName);
     exit(1);
   }
 }
@@ -174,12 +173,10 @@ symbol_t *getSymbol(char *id) {
   symbol_t *symb = NULL;
 
   if (isScopeLocal()) {
-    printf("local\n");
     symb = (symbol_t *)getFromHT(LocalSymTable, id);
   }
 
   if (!symb) {
-    printf("global\n");
     symb = (symbol_t *)getFromHT(GlobalSymTable, id);
   }
 
@@ -195,7 +192,6 @@ symbol_t *getSymbol(char *id) {
 symbol_t *getGlobalSymbol(char *id) {
   symbol_t *symb = NULL;
 
-  printf("global\n");
   symb = (symbol_t *)getFromHT(GlobalSymTable, id);
 
   if (!symb) {
@@ -204,5 +200,44 @@ symbol_t *getGlobalSymbol(char *id) {
     return NULL; // wont reach
   }
 
+  return symb;
+}
+
+// returns symbol for a function (name, type, params...)
+symbol_t *createFunctionSymbol(subprogramHeaderNode_t *headerNode) {
+  symbol_t *symb = malloc(sizeof(symbol_t));
+  symb->srcName = headerNode->id->payload.id->id;
+  symb->returnType = headerNode->returnType;
+  symb->symbType = FUNCTION_ID;
+  symb->isPtr = 0;
+  symb->isGlobal = 1;
+
+  if (!headerNode->params) {
+    symb->paramCount = 0;
+    return symb;
+  }
+
+  // register params
+  int paramCount = 0;
+  listNode_t *paramsList = headerNode->params->payload.list;
+  for (int i = 0; i < paramsList->childrenCount; i++) {
+    paramDefNode_t *paramDefNode =
+        paramsList->children[i]->payload.paramDefNode;
+    listNode_t *idsList = paramDefNode->idsList->payload.list;
+
+    varType_e type = paramDefNode->varType;
+    int byRef = paramDefNode->byReference;
+    int quant = idsList->childrenCount;
+
+    for (int j = 0; j < quant; j++) {
+      parameter_t *param = malloc(sizeof(parameter_t));
+      param->byReference = byRef;
+      param->type = type;
+      symb->params[paramCount] = param;
+      paramCount++;
+    }
+  }
+
+  symb->paramCount = paramCount;
   return symb;
 }

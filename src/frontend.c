@@ -36,8 +36,8 @@ astNode_t *createProgramNode(char *programName, astNode_t *varDeclarationsList,
   node->nodeType = PROGRAM_NODE;
   node->payload.program = programNode;
 
-  printf("AST Done\n");
-  printASTRoot(node);
+  // printf("AST Done\n");
+  // printASTRoot(node);
 
   return node;
 }
@@ -226,7 +226,6 @@ astNode_t *createWhileNode(astNode_t *condition, astNode_t *codeBlock) {
 }
 
 astNode_t *createExpressionNode(char *op, astNode_t *lOp, astNode_t *rOp) {
-  printf("exp\n");
   astNode_t *node = malloc(sizeof(astNode_t));
   expressionNode_t *expNode = malloc(sizeof(expressionNode_t));
 
